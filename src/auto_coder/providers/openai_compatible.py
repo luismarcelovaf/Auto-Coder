@@ -1,6 +1,7 @@
 """OpenAI-compatible API provider."""
 
 import json
+import os
 import uuid
 from typing import Any, AsyncIterator
 
@@ -8,6 +9,9 @@ import httpx
 
 from .base import LLMProvider, Message, StreamChunk, ToolCall, ToolDefinition
 from ..auth import get_certifi_path, update_certifi, get_authentication
+
+# Set AUTO_CODER_DEBUG=1 to enable debug logging
+DEBUG = os.environ.get("AUTO_CODER_DEBUG", "").lower() in ("1", "true", "yes")
 
 
 class OpenAICompatibleProvider(LLMProvider):
@@ -91,6 +95,15 @@ class OpenAICompatibleProvider(LLMProvider):
         """Convert a Message to OpenAI API format."""
         result: dict[str, Any] = {"role": msg.role}
 
+        # Handle tool result messages specially
+        if msg.role == "tool":
+            # Tool messages MUST have tool_call_id and content
+            result["tool_call_id"] = msg.tool_call_id
+            # Content must always be present for tool messages (use empty string if None)
+            result["content"] = msg.content if msg.content is not None else ""
+            return result
+
+        # For non-tool messages
         if msg.content is not None:
             result["content"] = msg.content
 
@@ -106,12 +119,6 @@ class OpenAICompatibleProvider(LLMProvider):
                 }
                 for tc in msg.tool_calls
             ]
-
-        if msg.tool_call_id:
-            result["tool_call_id"] = msg.tool_call_id
-
-        if msg.name:
-            result["name"] = msg.name
 
         return result
 
@@ -146,9 +153,11 @@ class OpenAICompatibleProvider(LLMProvider):
         """
         client = await self._get_client()
 
+        formatted_messages = [self._message_to_dict(m) for m in messages]
+
         payload: dict[str, Any] = {
             "model": self.model,
-            "messages": [self._message_to_dict(m) for m in messages],
+            "messages": formatted_messages,
             "stream": True,  # Always stream
             **self.extra_params,
         }
@@ -156,6 +165,20 @@ class OpenAICompatibleProvider(LLMProvider):
         if tools:
             payload["tools"] = [t.to_openai_format() for t in tools]
             payload["tool_choice"] = "auto"
+
+        # Debug: print the payload being sent
+        if DEBUG:
+            print("\n=== DEBUG: API Request ===")
+            print(f"URL: {self.base_url}/chat/completions")
+            print(f"Messages ({len(formatted_messages)}):")
+            for i, msg in enumerate(formatted_messages):
+                print(f"  [{i}] role={msg.get('role')}, tool_call_id={msg.get('tool_call_id')}")
+                if msg.get('content'):
+                    content_preview = msg['content'][:200] + "..." if len(msg.get('content', '')) > 200 else msg.get('content')
+                    print(f"       content: {content_preview}")
+                if msg.get('tool_calls'):
+                    print(f"       tool_calls: {msg['tool_calls']}")
+            print("=== END DEBUG ===\n")
 
         # Always use streaming
         return self._stream_response(client, payload)
