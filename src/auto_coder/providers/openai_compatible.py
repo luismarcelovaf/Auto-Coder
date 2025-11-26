@@ -7,7 +7,7 @@ from typing import Any, AsyncIterator
 import httpx
 
 from .base import LLMProvider, Message, StreamChunk, ToolCall, ToolDefinition
-from ..auth import get_certifi_path, is_sso_enabled, get_sso_token, get_sso_headers
+from ..auth import get_certifi_path, update_certifi, is_sso_enabled, get_sso_token, get_sso_headers
 
 
 class OpenAICompatibleProvider(LLMProvider):
@@ -54,6 +54,9 @@ class OpenAICompatibleProvider(LLMProvider):
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
+            # Update certificates before creating client
+            update_certifi()
+
             # Build headers including correlation ID
             headers = {
                 "Content-Type": "application/json",
