@@ -202,21 +202,35 @@ def list_directory(
         return {"error": f"Error listing directory: {e}"}
 
 
+def _format_size(size: int) -> str:
+    """Format file size in human-readable format."""
+    if size < 1024:
+        return f"{size}B"
+    elif size < 1024 * 1024:
+        return f"{size / 1024:.1f}K"
+    elif size < 1024 * 1024 * 1024:
+        return f"{size / (1024 * 1024):.1f}M"
+    else:
+        return f"{size / (1024 * 1024 * 1024):.1f}G"
+
+
 def tree_directory(
     dir_path: str = ".",
     max_depth: int = 10,
     root_dir: str | None = None,
 ) -> dict[str, Any]:
-    """Show directory structure as a tree.
+    """Show directory structure as a tree with file details.
 
     Args:
         dir_path: Path to the directory
-        max_depth: Maximum depth to traverse (default 5)
+        max_depth: Maximum depth to traverse (default 10)
         root_dir: Optional root directory to restrict access
 
     Returns:
         Dict with 'tree' string or 'error' key
     """
+    import datetime
+
     # Directories to skip
     skip_dirs = {
         ".git", ".svn", ".hg", ".bzr",
@@ -239,9 +253,26 @@ def tree_directory(
         if not path.is_dir():
             return {"error": f"Not a directory: {dir_path}"}
 
-        lines = [f"{path.name}/"]
+        lines = []
+        total_files = 0
+        total_dirs = 0
+
+        def format_entry(item: Path, prefix: str, connector: str) -> str:
+            """Format a single entry with ls -la style info."""
+            try:
+                stat = item.stat()
+                size = _format_size(stat.st_size) if item.is_file() else "<DIR>"
+                mtime = datetime.datetime.fromtimestamp(stat.st_mtime)
+                date_str = mtime.strftime("%Y-%m-%d %H:%M")
+                name = f"{item.name}/" if item.is_dir() else item.name
+                return f"{prefix}{connector}{size:>8}  {date_str}  {name}"
+            except (PermissionError, OSError):
+                name = f"{item.name}/" if item.is_dir() else item.name
+                return f"{prefix}{connector}{'???':>8}  {'????-??-?? ??:??'}  {name}"
 
         def add_entries(current_path: Path, prefix: str = "", depth: int = 0):
+            nonlocal total_files, total_dirs
+
             if depth >= max_depth:
                 return
 
@@ -263,19 +294,30 @@ def tree_directory(
                 is_last = i == len(filtered_items) - 1
                 connector = "└── " if is_last else "├── "
 
+                lines.append(format_entry(item, prefix, connector))
+
                 if item.is_dir():
-                    lines.append(f"{prefix}{connector}{item.name}/")
+                    total_dirs += 1
                     extension = "    " if is_last else "│   "
                     add_entries(item, prefix + extension, depth + 1)
                 else:
-                    lines.append(f"{prefix}{connector}{item.name}")
+                    total_files += 1
+
+        # Header
+        lines.append(f"{path.name}/")
+        lines.append(f"{'=' * 60}")
 
         add_entries(path)
+
+        # Summary
+        lines.append(f"{'=' * 60}")
+        lines.append(f"Total: {total_files} files, {total_dirs} directories")
 
         return {
             "path": str(path),
             "tree": "\n".join(lines),
-            "depth": max_depth,
+            "total_files": total_files,
+            "total_dirs": total_dirs,
         }
     except PermissionError as e:
         return {"error": str(e)}

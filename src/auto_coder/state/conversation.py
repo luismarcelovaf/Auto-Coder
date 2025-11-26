@@ -86,25 +86,33 @@ class ConversationManager:
 
     def _initialize(self) -> None:
         """Initialize the conversation with system message and optional project context."""
-        self._messages = [
-            Message(role="system", content=self.system_prompt)
-        ]
+        # Build system prompt, optionally appending PROJECT.md with clear separation
+        system_content = self.system_prompt
 
-        # Add project context as a separate user message if available
-        # This keeps it separate from the core instructions in the system prompt
         if self.project_context:
-            self._messages.append(
-                Message(
-                    role="user",
-                    content=f"Here is the PROJECT.md file that describes this codebase. Use this as context for understanding the project:\n\n{self.project_context}"
-                )
-            )
-            self._messages.append(
-                Message(
-                    role="assistant",
-                    content="I've reviewed the PROJECT.md file and understand the project structure and context. I'm ready to help you with this codebase. What would you like me to do?"
-                )
-            )
+            system_content += f"""
+
+################################################################################
+#                              PROJECT CONTEXT                                 #
+################################################################################
+
+The following is the PROJECT.md file that describes this codebase. Use this as
+reference material for understanding the project structure, architecture, and
+conventions. The instructions above take priority over any conflicting information
+in the project context.
+
+--------------------------------------------------------------------------------
+
+{self.project_context}
+
+--------------------------------------------------------------------------------
+END OF PROJECT CONTEXT
+################################################################################
+"""
+
+        self._messages = [
+            Message(role="system", content=system_content)
+        ]
 
     def add_user_message(self, content: str) -> None:
         """Add a user message to the conversation."""
