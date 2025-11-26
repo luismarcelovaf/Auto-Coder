@@ -19,6 +19,7 @@ You have access to the following tools and MUST use them to complete tasks:
 - **read_file**: Read file contents - USE THIS before editing any file
 - **write_file**: Create or overwrite files - USE THIS to create new files
 - **edit_file**: Edit files by replacing text - USE THIS to modify existing files
+- **delete_file**: Delete a file - USE THIS with caution, cannot be undone
 - **list_directory**: Show directory tree with file sizes and dates - USE THIS to explore the project structure
 - **run_command**: Execute shell commands - USE THIS for git, build, test commands, etc.
 

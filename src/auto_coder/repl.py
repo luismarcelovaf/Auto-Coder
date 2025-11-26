@@ -202,7 +202,8 @@ class REPL:
 The assistant can use these tools:
 - **read_file** - Read file contents with line numbers
 - **write_file** - Write content to a file (creates or overwrites)
-- **edit_file** - Edit a file by replacing exact text matches
+- **edit_file** - Edit a file by replacing exact text matches or line ranges
+- **delete_file** - Delete a file (use with caution)
 - **list_directory** - Show directory tree with file sizes and dates (like ls -la)
 - **run_command** - Execute shell commands
 

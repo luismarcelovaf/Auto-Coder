@@ -54,10 +54,10 @@ def read_file(
         path = _validate_path(file_path, root_dir)
 
         if not path.exists():
-            return {"error": f"File not found: {file_path}"}
+            return {"status": "FAILED", "error": f"File not found: {file_path}"}
 
         if not path.is_file():
-            return {"error": f"Not a file: {file_path}"}
+            return {"status": "FAILED", "error": f"Not a file: {file_path}"}
 
         content = path.read_text(encoding="utf-8")
         all_lines = content.split("\n")
@@ -69,7 +69,7 @@ def read_file(
 
         # Validate range
         if start_idx >= total_lines:
-            return {"error": f"Start line {start_line} is beyond file length ({total_lines} lines)"}
+            return {"status": "FAILED", "error": f"Start line {start_line} is beyond file length ({total_lines} lines)"}
 
         # Extract the requested lines
         selected_lines = all_lines[start_idx:end_idx]
@@ -82,6 +82,7 @@ def read_file(
         raw_content = "\n".join(selected_lines)
 
         result = {
+            "status": "SUCCESS",
             "content": "\n".join(numbered_lines),
             "raw_content": raw_content,
             "path": str(path),
@@ -97,11 +98,11 @@ def read_file(
 
         return result
     except PermissionError as e:
-        return {"error": str(e)}
+        return {"status": "FAILED", "error": str(e)}
     except UnicodeDecodeError:
-        return {"error": f"Cannot read binary file: {file_path}"}
+        return {"status": "FAILED", "error": f"Cannot read binary file: {file_path}"}
     except Exception as e:
-        return {"error": f"Error reading file: {e}"}
+        return {"status": "FAILED", "error": f"Error reading file: {e}"}
 
 
 def write_file(
@@ -115,7 +116,7 @@ def write_file(
         root_dir: Optional root directory to restrict access
 
     Returns:
-        Dict with 'success' or 'error' key
+        Dict with 'status', 'success'/'error', and details
     """
     try:
         path = _validate_path(file_path, root_dir)
@@ -124,73 +125,247 @@ def write_file(
         path.parent.mkdir(parents=True, exist_ok=True)
 
         path.write_text(content, encoding="utf-8")
+        line_count = content.count("\n") + 1
 
         return {
+            "status": "SUCCESS",
             "success": True,
+            "message": f"Successfully wrote {len(content.encode('utf-8'))} bytes ({line_count} lines) to {path.name}",
             "path": str(path),
             "bytes_written": len(content.encode("utf-8")),
+            "lines_written": line_count,
         }
     except PermissionError as e:
-        return {"error": str(e)}
+        return {"status": "FAILED", "error": str(e)}
     except Exception as e:
-        return {"error": f"Error writing file: {e}"}
+        return {"status": "FAILED", "error": f"Error writing file: {e}"}
 
 
 def edit_file(
     file_path: str,
-    old_string: str,
-    new_string: str,
+    old_string: str | None = None,
+    new_string: str | None = None,
+    start_line: int | None = None,
+    end_line: int | None = None,
+    insert_line: int | None = None,
     root_dir: str | None = None,
 ) -> dict[str, Any]:
-    """Edit a file by replacing an exact string match.
+    """Edit a file by replacing text, replacing lines, or inserting new lines.
+
+    Three modes of operation:
+    1. String replacement: Provide old_string and new_string to replace exact text
+    2. Line replacement: Provide start_line, end_line, and new_string to replace lines
+    3. Insert mode: Provide insert_line and new_string to insert new lines after that line
 
     Args:
         file_path: Path to the file
-        old_string: Exact string to find and replace (including whitespace)
-        new_string: Replacement string
+        old_string: Exact string to find and replace (for string mode)
+        new_string: Replacement/insert string (required for all modes)
+        start_line: Starting line number for line-based replacement (1-based, inclusive)
+        end_line: Ending line number for line-based replacement (1-based, inclusive)
+        insert_line: Line number after which to insert new content (0 = insert at beginning)
         root_dir: Optional root directory to restrict access
 
     Returns:
-        Dict with 'success' or 'error' key
+        Dict with 'success' and 'message' or 'error' and 'status' keys
     """
     try:
         path = _validate_path(file_path, root_dir)
 
         if not path.exists():
-            return {"error": f"File not found: {file_path}"}
+            return {
+                "status": "FAILED",
+                "error": f"File not found: {file_path}"
+            }
 
         content = path.read_text(encoding="utf-8")
 
-        # Check that old_string exists and is unique
-        count = content.count(old_string)
-        if count == 0:
-            # Provide helpful debugging info
-            old_repr = repr(old_string[:200]) if len(old_string) > 200 else repr(old_string)
+        # Determine mode: insert, line-based, or string-based
+        if insert_line is not None:
+            # Insert mode - add new lines after specified line
+            if new_string is None:
+                return {
+                    "status": "FAILED",
+                    "error": "new_string is required for insert mode"
+                }
+
+            lines = content.split("\n")
+            total_lines = len(lines)
+
+            if insert_line < 0:
+                return {
+                    "status": "FAILED",
+                    "error": f"insert_line must be >= 0, got {insert_line}"
+                }
+
+            # insert_line=0 means insert at beginning, otherwise insert after that line
+            insert_idx = min(insert_line, total_lines)
+
+            new_lines = new_string.split("\n")
+            lines[insert_idx:insert_idx] = new_lines
+
+            new_content = "\n".join(lines)
+            path.write_text(new_content, encoding="utf-8")
+
+            if insert_line == 0:
+                position = "at the beginning"
+            else:
+                position = f"after line {insert_line}"
+
             return {
-                "error": f"String not found in file. Make sure whitespace (tabs, spaces, newlines) matches exactly. Searched for: {old_repr}"
-            }
-        if count > 1:
-            return {
-                "error": f"String appears {count} times in file. Provide more context to make it unique."
+                "status": "SUCCESS",
+                "success": True,
+                "message": f"Inserted {len(new_lines)} lines {position}",
+                "path": str(path),
+                "lines_inserted": len(new_lines),
             }
 
-        new_content = content.replace(old_string, new_string, 1)
-        path.write_text(new_content, encoding="utf-8")
+        elif start_line is not None and end_line is not None:
+            # Line-based replacement mode
+            if new_string is None:
+                return {
+                    "status": "FAILED",
+                    "error": "new_string is required when using line-based replacement"
+                }
+
+            lines = content.split("\n")
+            total_lines = len(lines)
+
+            # Validate line numbers
+            if start_line < 1:
+                return {
+                    "status": "FAILED",
+                    "error": f"start_line must be >= 1, got {start_line}"
+                }
+            if end_line < start_line:
+                return {
+                    "status": "FAILED",
+                    "error": f"end_line ({end_line}) must be >= start_line ({start_line})"
+                }
+            if start_line > total_lines:
+                return {
+                    "status": "FAILED",
+                    "error": f"start_line {start_line} is beyond file length ({total_lines} lines)"
+                }
+
+            # Adjust end_line if beyond file
+            end_line = min(end_line, total_lines)
+
+            # Convert to 0-based indexing
+            start_idx = start_line - 1
+            end_idx = end_line
+
+            # Get the old content for reporting
+            old_lines = lines[start_idx:end_idx]
+            old_content = "\n".join(old_lines)
+
+            # Replace the lines
+            new_lines = new_string.split("\n")
+            lines[start_idx:end_idx] = new_lines
+
+            new_content = "\n".join(lines)
+            path.write_text(new_content, encoding="utf-8")
+
+            return {
+                "status": "SUCCESS",
+                "success": True,
+                "message": f"Replaced lines {start_line}-{end_line} ({end_line - start_line + 1} lines) with {len(new_lines)} new lines",
+                "path": str(path),
+                "lines_replaced": end_line - start_line + 1,
+                "new_lines_count": len(new_lines),
+            }
+
+        elif old_string is not None:
+            # String-based replacement mode
+            if new_string is None:
+                return {
+                    "status": "FAILED",
+                    "error": "new_string is required when using string-based replacement"
+                }
+
+            # Check that old_string exists and is unique
+            count = content.count(old_string)
+            if count == 0:
+                # Provide helpful debugging info
+                old_repr = repr(old_string[:200]) if len(old_string) > 200 else repr(old_string)
+                return {
+                    "status": "FAILED",
+                    "error": f"String not found in file. Make sure whitespace (tabs, spaces, newlines) matches exactly. Searched for: {old_repr}"
+                }
+            if count > 1:
+                return {
+                    "status": "FAILED",
+                    "error": f"String appears {count} times in file. Provide more context to make it unique."
+                }
+
+            new_content = content.replace(old_string, new_string, 1)
+            path.write_text(new_content, encoding="utf-8")
+
+            # Count lines changed
+            old_line_count = old_string.count("\n") + 1
+            new_line_count = new_string.count("\n") + 1
+
+            return {
+                "status": "SUCCESS",
+                "success": True,
+                "message": f"Successfully replaced {len(old_string)} chars ({old_line_count} lines) with {len(new_string)} chars ({new_line_count} lines)",
+                "path": str(path),
+                "old_length": len(old_string),
+                "new_length": len(new_string),
+            }
+
+        else:
+            return {
+                "status": "FAILED",
+                "error": "Must provide either old_string (for string replacement) or start_line+end_line (for line replacement)"
+            }
+
+    except PermissionError as e:
+        return {"status": "FAILED", "error": str(e)}
+    except UnicodeDecodeError:
+        return {"status": "FAILED", "error": f"Cannot edit binary file: {file_path}"}
+    except Exception as e:
+        return {"status": "FAILED", "error": f"Error editing file: {e}"}
+
+
+def delete_file(
+    file_path: str,
+    root_dir: str | None = None,
+) -> dict[str, Any]:
+    """Delete a file.
+
+    Args:
+        file_path: Path to the file to delete
+        root_dir: Optional root directory to restrict access
+
+    Returns:
+        Dict with 'status' and 'message' or 'error'
+    """
+    try:
+        path = _validate_path(file_path, root_dir)
+
+        if not path.exists():
+            return {"status": "FAILED", "error": f"File not found: {file_path}"}
+
+        if not path.is_file():
+            return {"status": "FAILED", "error": f"Not a file (use a different method for directories): {file_path}"}
+
+        # Get file info before deletion for the message
+        file_size = path.stat().st_size
+        file_name = path.name
+
+        path.unlink()
 
         return {
+            "status": "SUCCESS",
             "success": True,
+            "message": f"Successfully deleted file: {file_name} ({_format_size(file_size)})",
             "path": str(path),
-            "old_length": len(old_string),
-            "new_length": len(new_string),
         }
     except PermissionError as e:
-        return {"error": str(e)}
-    except UnicodeDecodeError:
-        return {"error": f"Cannot edit binary file: {file_path}"}
+        return {"status": "FAILED", "error": f"Permission denied: {e}"}
     except Exception as e:
-        return {"error": f"Error editing file: {e}"}
-
-
+        return {"status": "FAILED", "error": f"Error deleting file: {e}"}
 
 
 def _format_size(size: int) -> str:
@@ -239,10 +414,10 @@ def list_directory(
         path = _validate_path(dir_path, root_dir)
 
         if not path.exists():
-            return {"error": f"Directory not found: {dir_path}"}
+            return {"status": "FAILED", "error": f"Directory not found: {dir_path}"}
 
         if not path.is_dir():
-            return {"error": f"Not a directory: {dir_path}"}
+            return {"status": "FAILED", "error": f"Not a directory: {dir_path}"}
 
         lines = []
         total_files = 0
@@ -305,15 +480,16 @@ def list_directory(
         lines.append(f"Total: {total_files} files, {total_dirs} directories")
 
         return {
+            "status": "SUCCESS",
             "path": str(path),
             "tree": "\n".join(lines),
             "total_files": total_files,
             "total_dirs": total_dirs,
         }
     except PermissionError as e:
-        return {"error": str(e)}
+        return {"status": "FAILED", "error": str(e)}
     except Exception as e:
-        return {"error": f"Error creating directory tree: {e}"}
+        return {"status": "FAILED", "error": f"Error creating directory tree: {e}"}
 
 
 def _make_read_file_handler(root_dir: str | None):
@@ -332,8 +508,16 @@ def _make_write_file_handler(root_dir: str | None):
 
 def _make_edit_file_handler(root_dir: str | None):
     """Create a handler for edit_file that ignores extra kwargs."""
-    def handler(file_path: str, old_string: str, new_string: str, **kwargs) -> dict[str, Any]:
-        return edit_file(file_path, old_string, new_string, root_dir)
+    def handler(
+        file_path: str,
+        old_string: str | None = None,
+        new_string: str | None = None,
+        start_line: int | None = None,
+        end_line: int | None = None,
+        insert_line: int | None = None,
+        **kwargs
+    ) -> dict[str, Any]:
+        return edit_file(file_path, old_string, new_string, start_line, end_line, insert_line, root_dir)
     return handler
 
 
@@ -341,6 +525,13 @@ def _make_list_directory_handler(root_dir: str | None):
     """Create a handler for list_directory that ignores extra kwargs."""
     def handler(dir_path: str = ".", max_depth: int = 10, **kwargs) -> dict[str, Any]:
         return list_directory(dir_path, max_depth, root_dir)
+    return handler
+
+
+def _make_delete_file_handler(root_dir: str | None):
+    """Create a handler for delete_file that ignores extra kwargs."""
+    def handler(file_path: str, **kwargs) -> dict[str, Any]:
+        return delete_file(file_path, root_dir)
     return handler
 
 
@@ -406,9 +597,10 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
         ToolDefinition(
             name="edit_file",
             description=(
-                "Edit a file by replacing an exact string match. The old_string must appear exactly once in the file. "
-                "IMPORTANT: old_string must match EXACTLY including all whitespace (tabs, spaces, newlines). "
-                "Copy the exact text from read_file output, preserving all indentation."
+                "Edit a file using one of three modes: "
+                "(1) STRING MODE: Provide old_string and new_string to replace exact text. "
+                "(2) LINE MODE: Provide start_line, end_line, and new_string to replace lines. "
+                "(3) INSERT MODE: Provide insert_line and new_string to insert new lines (0 = beginning)."
             ),
             parameters={
                 "type": "object",
@@ -419,14 +611,26 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
                     },
                     "old_string": {
                         "type": "string",
-                        "description": "The exact string to find and replace, including all whitespace (tabs, spaces, newlines)",
+                        "description": "For STRING MODE: The exact string to find and replace",
                     },
                     "new_string": {
                         "type": "string",
-                        "description": "The string to replace it with, with proper indentation",
+                        "description": "The replacement/insert content (required for all modes)",
+                    },
+                    "start_line": {
+                        "type": "integer",
+                        "description": "For LINE MODE: Starting line number (1-based, inclusive)",
+                    },
+                    "insert_line": {
+                        "type": "integer",
+                        "description": "For INSERT MODE: Line number after which to insert (0 = insert at beginning)",
+                    },
+                    "end_line": {
+                        "type": "integer",
+                        "description": "For LINE MODE: Ending line number (1-based, inclusive)",
                     },
                 },
-                "required": ["file_path", "old_string", "new_string"],
+                "required": ["file_path", "new_string"],
             },
             handler=_make_edit_file_handler(root_dir),
         ),
@@ -454,5 +658,23 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
                 "required": [],
             },
             handler=_make_list_directory_handler(root_dir),
+        ),
+        ToolDefinition(
+            name="delete_file",
+            description=(
+                "Delete a file. Use with caution - this action cannot be undone. "
+                "Only works on files, not directories."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "The path to the file to delete",
+                    },
+                },
+                "required": ["file_path"],
+            },
+            handler=_make_delete_file_handler(root_dir),
         ),
     ]

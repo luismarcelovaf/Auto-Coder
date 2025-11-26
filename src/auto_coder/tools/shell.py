@@ -48,6 +48,7 @@ async def run_command(
             process.kill()
             await process.wait()
             return {
+                "status": "FAILED",
                 "error": f"Command timed out after {timeout} seconds",
                 "return_code": -1,
             }
@@ -62,18 +63,31 @@ async def run_command(
         if len(stderr_str) > max_length:
             stderr_str = stderr_str[:max_length] + f"\n... (truncated, {len(stderr_str)} total bytes)"
 
-        return {
-            "stdout": stdout_str,
-            "stderr": stderr_str,
-            "return_code": process.returncode,
-            "command": command,
-            "cwd": cwd,
-        }
+        # Determine success/failure based on return code
+        if process.returncode == 0:
+            return {
+                "status": "SUCCESS",
+                "stdout": stdout_str,
+                "stderr": stderr_str,
+                "return_code": process.returncode,
+                "command": command,
+                "cwd": cwd,
+            }
+        else:
+            return {
+                "status": "FAILED",
+                "error": f"Command exited with code {process.returncode}",
+                "stdout": stdout_str,
+                "stderr": stderr_str,
+                "return_code": process.returncode,
+                "command": command,
+                "cwd": cwd,
+            }
 
     except FileNotFoundError:
-        return {"error": "Shell not found", "return_code": -1}
+        return {"status": "FAILED", "error": "Shell not found", "return_code": -1}
     except Exception as e:
-        return {"error": f"Error executing command: {e}", "return_code": -1}
+        return {"status": "FAILED", "error": f"Error executing command: {e}", "return_code": -1}
 
 
 def _make_run_command_handler(default_working_dir: str | None):
