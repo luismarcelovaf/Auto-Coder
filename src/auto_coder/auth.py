@@ -1,10 +1,18 @@
 """Authentication utilities including certificate and SSO support."""
 
+import io
 import os
+import zipfile
 from typing import Any
 
 import certifi
+import httpx
 import requests
+
+from .authentication_provider import (
+    AuthenticationProvider,
+    AuthenticationProviderWithClientSideTokenRefresh,
+)
 
 
 def update_certifi() -> None:
@@ -35,47 +43,51 @@ def is_sso_enabled() -> bool:
     return os.environ.get("USE_SSO", "").lower() == "true"
 
 
-async def get_sso_token() -> str | None:
-    """Obtain an SSO token for authentication.
-
-    This function retrieves an SSO token when USE_SSO is enabled.
-    Implement your SSO token acquisition logic here.
+def is_server_side_token_refresh_enabled() -> bool:
+    """Check if server-side token refresh is enabled.
 
     Returns:
-        The SSO token string, or None if SSO is not enabled or token acquisition fails
+        True if SERVER_SIDE_TOKEN_REFRESH environment variable is set to 'true'
     """
-    if not is_sso_enabled():
-        return None
-
-    # TODO: Implement your SSO token acquisition logic here
-    # Examples:
-    # - OAuth2 device flow
-    # - OIDC token exchange
-    # - SAML assertion
-    # - Azure AD / Entra ID
-    # - Okta
-    # - Custom SSO provider
-
-    # Placeholder: Check for token in environment variable
-    sso_token = os.environ.get("SSO_TOKEN")
-    if sso_token:
-        return sso_token
-
-    # TODO: Implement interactive SSO flow if needed
-    # raise NotImplementedError("SSO token acquisition not implemented")
-
-    return None
+    return os.environ.get("SERVER_SIDE_TOKEN_REFRESH", "").lower() == "true"
 
 
-def get_sso_headers(token: str) -> dict[str, str]:
-    """Get HTTP headers for SSO authentication.
+def get_authentication(
+    auth_provider: AuthenticationProvider | None = None,
+) -> tuple[dict[str, str], httpx.Auth | None]:
+    """Get authentication headers and/or httpx.Auth based on configuration.
+
+    Authentication logic:
+    1. If USE_SSO is true: Use AuthenticationProvider to generate a bearer token
+    2. If USE_SSO is false and SERVER_SIDE_TOKEN_REFRESH is true:
+       Use AuthenticationProvider to get basic credentials
+    3. Otherwise: Use AuthenticationProviderWithClientSideTokenRefresh as httpx.Auth
 
     Args:
-        token: The SSO token
+        auth_provider: Optional AuthenticationProvider instance.
+                       If not provided, a new one will be created.
 
     Returns:
-        Dictionary of headers to include in requests
+        Tuple of (headers dict, httpx.Auth instance or None)
     """
-    return {
-        "Authorization": f"Bearer {token}",
-    }
+    headers: dict[str, str] = {}
+    auth: httpx.Auth | None = None
+
+    if auth_provider is None:
+        auth_provider = AuthenticationProvider()
+
+    if is_sso_enabled():
+        # Case 1: SSO enabled - use bearer token
+        token = auth_provider.generate_auth_token()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+    elif is_server_side_token_refresh_enabled():
+        # Case 2: Server-side token refresh - use basic credentials
+        credentials = auth_provider.get_basic_credentials()
+        if credentials:
+            headers["Authorization"] = f"Basic {credentials}"
+    else:
+        # Case 3: Client-side token refresh - use httpx.Auth
+        auth = AuthenticationProviderWithClientSideTokenRefresh()
+
+    return headers, auth

@@ -88,8 +88,8 @@ llm:
 - `AUTO_CODER_MODEL` - Override model
 - `AUTO_CODER_API_KEY` - Override API key
 - `OPENAI_API_KEY` - Fallback API key
-- `USE_SSO` - Set to "true" to enable SSO authentication
-- `SSO_TOKEN` - SSO token (if not using interactive SSO flow)
+- `USE_SSO` - Set to "true" to enable SSO authentication (uses bearer token)
+- `SERVER_SIDE_TOKEN_REFRESH` - Set to "true" to use basic credentials for server-side token refresh
 
 ## Authentication
 
@@ -102,16 +102,45 @@ The simplest method - provide an API key via:
 
 ### SSO Authentication
 
-Set `USE_SSO=true` to enable Single Sign-On. Implement your SSO token acquisition logic in `src/auto_coder/auth.py`:
+Set `USE_SSO=true` to enable Single Sign-On. This uses `AuthenticationProvider.generate_auth_token()` to obtain a bearer token.
+
+### Server-Side Token Refresh
+
+Set `SERVER_SIDE_TOKEN_REFRESH=true` to use basic credentials. This uses `AuthenticationProvider.get_basic_credentials()` to obtain credentials.
+
+### Client-Side Token Refresh
+
+When neither `USE_SSO` nor `SERVER_SIDE_TOKEN_REFRESH` is enabled, the tool uses `AuthenticationProviderWithClientSideTokenRefresh` which implements `httpx.Auth` to handle authentication and token refresh automatically during requests.
+
+### Authentication Provider
+
+Create `src/auto_coder/authentication_provider.py` with your authentication logic:
 
 ```python
-async def get_sso_token() -> str | None:
-    # Implement your SSO flow here:
-    # - OAuth2 device flow
-    # - OIDC token exchange
-    # - Azure AD / Entra ID
-    # - Okta, Auth0, etc.
-    pass
+import httpx
+
+class AuthenticationProvider:
+    def generate_auth_token(self) -> str | None:
+        """Generate a bearer token for SSO authentication."""
+        # Implement your SSO token logic
+        pass
+
+    def get_basic_credentials(self) -> str | None:
+        """Get base64-encoded basic credentials for server-side token refresh."""
+        # Implement your basic auth logic
+        pass
+
+class AuthenticationProviderWithClientSideTokenRefresh(httpx.Auth):
+    def auth_flow(self, request: httpx.Request):
+        """Handle authentication flow with client-side token refresh."""
+        token = self.get_bearer_token()
+        request.headers["Authorization"] = f"Bearer {token}"
+        yield request
+
+    def get_bearer_token(self) -> str:
+        """Get or refresh the bearer token."""
+        # Implement your token refresh logic
+        pass
 ```
 
 ### Custom Headers

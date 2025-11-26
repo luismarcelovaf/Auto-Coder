@@ -7,7 +7,7 @@ from typing import Any, AsyncIterator
 import httpx
 
 from .base import LLMProvider, Message, StreamChunk, ToolCall, ToolDefinition
-from ..auth import get_certifi_path, update_certifi, is_sso_enabled, get_sso_token, get_sso_headers
+from ..auth import get_certifi_path, update_certifi, get_authentication
 
 
 class OpenAICompatibleProvider(LLMProvider):
@@ -32,7 +32,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self.timeout = timeout
         self._client: httpx.AsyncClient | None = None
         self._correlation_id = correlation_id or self._generate_correlation_id()
-        self._sso_token: str | None = None
+        self._httpx_auth: httpx.Auth | None = None
 
     @staticmethod
     def _generate_correlation_id() -> str:
@@ -63,12 +63,12 @@ class OpenAICompatibleProvider(LLMProvider):
                 **self.auth_headers,
             }
 
-            # Handle SSO authentication
-            if is_sso_enabled():
-                self._sso_token = await get_sso_token()
-                if self._sso_token:
-                    sso_headers = get_sso_headers(self._sso_token)
-                    headers.update(sso_headers)
+            # Get authentication based on configuration:
+            # 1. USE_SSO=true -> Bearer token from AuthenticationProvider
+            # 2. SERVER_SIDE_TOKEN_REFRESH=true -> Basic credentials from AuthenticationProvider
+            # 3. Otherwise -> httpx.Auth from AuthenticationProviderWithClientSideTokenRefresh
+            auth_headers, self._httpx_auth = get_authentication()
+            headers.update(auth_headers)
 
             # Use certifi for SSL certificate verification
             cert_path = get_certifi_path()
@@ -77,6 +77,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 timeout=httpx.Timeout(self.timeout),
                 headers=headers,
                 verify=cert_path,
+                auth=self._httpx_auth,
             )
         return self._client
 
