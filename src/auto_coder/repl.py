@@ -118,11 +118,21 @@ class REPL:
 
     def _on_tool_start(self, tool_call: ToolCall) -> None:
         """Called when a tool execution starts."""
+        # Stop live display before printing tool panel
+        if self._live_display:
+            self._live_display.stop()
+            self._live_display = None
+        # Print any accumulated response before tool panel
+        if self._current_response.strip():
+            self.console.print(Markdown(self._current_response))
+            self._current_response = ""
         self.console.print(self._format_tool_call(tool_call))
 
     def _on_tool_end(self, name: str, result: str) -> None:
         """Called when a tool execution ends."""
         self.console.print(self._format_tool_result(name, result))
+        # Start thinking indicator for next LLM call
+        self._thinking.start()
 
     async def _process_input(self, user_input: str) -> None:
         """Process user input and display response."""
@@ -153,37 +163,44 @@ class REPL:
         self.agent.on_tool_start = self._on_tool_start
         self.agent.on_tool_end = self._on_tool_end
 
-        # Stream the response
-        response_text = ""
-        first_chunk_received = False
+        # Initialize instance variables for streaming state
+        self._current_response = ""
+        self._live_display = None
+        self._thinking = ThinkingIndicator(self.console)
 
         self.console.print()  # Blank line before response
 
         # Start thinking indicator
-        thinking = ThinkingIndicator(self.console)
-        thinking.start()
+        self._thinking.start()
 
         try:
-            with Live(Text(""), console=self.console, refresh_per_second=10, auto_refresh=False) as live:
-                async for chunk in self.agent.run(user_input):
-                    # Stop thinking indicator on first chunk
-                    if not first_chunk_received:
-                        await thinking.stop()
-                        first_chunk_received = True
+            async for chunk in self.agent.run(user_input):
+                # Stop thinking indicator on first chunk of each LLM response
+                await self._thinking.stop()
 
-                    response_text += chunk
-                    # Render as markdown for nice formatting
-                    try:
-                        live.update(Markdown(response_text))
-                        live.refresh()
-                    except Exception:
-                        # Fall back to plain text if markdown fails
-                        live.update(Text(response_text))
-                        live.refresh()
+                # Start live display if not already running
+                if not self._live_display:
+                    self._live_display = Live(Text(""), console=self.console, refresh_per_second=10, auto_refresh=False)
+                    self._live_display.start()
+
+                self._current_response += chunk
+
+                # Render as markdown for nice formatting
+                try:
+                    self._live_display.update(Markdown(self._current_response))
+                    self._live_display.refresh()
+                except Exception:
+                    # Fall back to plain text if markdown fails
+                    self._live_display.update(Text(self._current_response))
+                    self._live_display.refresh()
+
         finally:
             # Ensure thinking indicator is stopped
-            if not first_chunk_received:
-                await thinking.stop()
+            await self._thinking.stop()
+            # Stop live display if it was started
+            if self._live_display:
+                self._live_display.stop()
+                self._live_display = None
 
         self.console.print()  # Blank line after response
 
