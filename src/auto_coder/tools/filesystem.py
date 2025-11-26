@@ -33,11 +33,18 @@ def _validate_path(path: str, root_dir: str | None = None) -> Path:
     return resolved
 
 
-def read_file(file_path: str, root_dir: str | None = None) -> dict[str, Any]:
-    """Read the contents of a file.
+def read_file(
+    file_path: str,
+    start_line: int | None = None,
+    end_line: int | None = None,
+    root_dir: str | None = None,
+) -> dict[str, Any]:
+    """Read the contents of a file, optionally a specific line range.
 
     Args:
         file_path: Absolute or relative path to the file
+        start_line: Starting line number (1-based, inclusive). If None, starts from beginning.
+        end_line: Ending line number (1-based, inclusive). If None, reads to end.
         root_dir: Optional root directory to restrict access
 
     Returns:
@@ -53,18 +60,42 @@ def read_file(file_path: str, root_dir: str | None = None) -> dict[str, Any]:
             return {"error": f"Not a file: {file_path}"}
 
         content = path.read_text(encoding="utf-8")
+        all_lines = content.split("\n")
+        total_lines = len(all_lines)
+
+        # Determine line range (convert to 0-based indexing)
+        start_idx = 0 if start_line is None else max(0, start_line - 1)
+        end_idx = total_lines if end_line is None else min(total_lines, end_line)
+
+        # Validate range
+        if start_idx >= total_lines:
+            return {"error": f"Start line {start_line} is beyond file length ({total_lines} lines)"}
+
+        # Extract the requested lines
+        selected_lines = all_lines[start_idx:end_idx]
 
         # Add line numbers for better context
         # Preserve exact whitespace - tabs and spaces are kept as-is
-        lines = content.split("\n")
-        numbered_lines = [f"{i+1:4d} | {line}" for i, line in enumerate(lines)]
+        numbered_lines = [f"{start_idx + i + 1:4d} | {line}" for i, line in enumerate(selected_lines)]
 
-        return {
+        # Build raw content for the selected range
+        raw_content = "\n".join(selected_lines)
+
+        result = {
             "content": "\n".join(numbered_lines),
-            "raw_content": content,  # Include raw content for exact matching
+            "raw_content": raw_content,
             "path": str(path),
-            "lines": len(lines),
+            "total_lines": total_lines,
         }
+
+        # Add range info if a range was specified
+        if start_line is not None or end_line is not None:
+            result["showing_lines"] = f"{start_idx + 1}-{end_idx}"
+            result["lines_shown"] = len(selected_lines)
+        else:
+            result["lines"] = total_lines
+
+        return result
     except PermissionError as e:
         return {"error": str(e)}
     except UnicodeDecodeError:
@@ -287,8 +318,8 @@ def list_directory(
 
 def _make_read_file_handler(root_dir: str | None):
     """Create a handler for read_file that ignores extra kwargs."""
-    def handler(file_path: str, **kwargs) -> dict[str, Any]:
-        return read_file(file_path, root_dir)
+    def handler(file_path: str, start_line: int | None = None, end_line: int | None = None, **kwargs) -> dict[str, Any]:
+        return read_file(file_path, start_line, end_line, root_dir)
     return handler
 
 
@@ -327,7 +358,8 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
             name="read_file",
             description=(
                 "Read the contents of a file. Returns the file content with line numbers. "
-                "The content preserves exact whitespace (tabs, spaces) for accurate editing."
+                "The content preserves exact whitespace (tabs, spaces) for accurate editing. "
+                "Optionally specify a line range to read only part of the file."
             ),
             parameters={
                 "type": "object",
@@ -335,6 +367,14 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
                     "file_path": {
                         "type": "string",
                         "description": "The path to the file to read",
+                    },
+                    "start_line": {
+                        "type": "integer",
+                        "description": "Starting line number (1-based, inclusive). Omit to start from beginning.",
+                    },
+                    "end_line": {
+                        "type": "integer",
+                        "description": "Ending line number (1-based, inclusive). Omit to read to end.",
                     },
                 },
                 "required": ["file_path"],
