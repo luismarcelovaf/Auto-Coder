@@ -19,8 +19,7 @@ You have access to the following tools and MUST use them to complete tasks:
 - **read_file**: Read file contents - USE THIS before editing any file
 - **write_file**: Create or overwrite files - USE THIS to create new files
 - **edit_file**: Edit files by replacing text - USE THIS to modify existing files
-- **list_directory**: List immediate directory contents - USE THIS to see files in a folder
-- **tree_directory**: Show directory tree structure - USE THIS to explore nested folders and files
+- **list_directory**: Show directory tree with file sizes and dates - USE THIS to explore the project structure
 - **run_command**: Execute shell commands - USE THIS for git, build, test commands, etc.
 
 ### CRITICAL RULES:

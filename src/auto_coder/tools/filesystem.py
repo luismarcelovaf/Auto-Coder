@@ -160,46 +160,6 @@ def edit_file(
         return {"error": f"Error editing file: {e}"}
 
 
-def list_directory(
-    dir_path: str = ".", root_dir: str | None = None
-) -> dict[str, Any]:
-    """List contents of a directory.
-
-    Args:
-        dir_path: Path to the directory
-        root_dir: Optional root directory to restrict access
-
-    Returns:
-        Dict with 'entries' or 'error' key
-    """
-    try:
-        path = _validate_path(dir_path, root_dir)
-
-        if not path.exists():
-            return {"error": f"Directory not found: {dir_path}"}
-
-        if not path.is_dir():
-            return {"error": f"Not a directory: {dir_path}"}
-
-        entries = []
-        for entry in sorted(path.iterdir()):
-            entry_type = "dir" if entry.is_dir() else "file"
-            size = entry.stat().st_size if entry.is_file() else None
-            entries.append({
-                "name": entry.name,
-                "type": entry_type,
-                "size": size,
-            })
-
-        return {
-            "path": str(path),
-            "entries": entries,
-            "count": len(entries),
-        }
-    except PermissionError as e:
-        return {"error": str(e)}
-    except Exception as e:
-        return {"error": f"Error listing directory: {e}"}
 
 
 def _format_size(size: int) -> str:
@@ -214,7 +174,7 @@ def _format_size(size: int) -> str:
         return f"{size / (1024 * 1024 * 1024):.1f}G"
 
 
-def tree_directory(
+def list_directory(
     dir_path: str = ".",
     max_depth: int = 10,
     root_dir: str | None = None,
@@ -348,15 +308,8 @@ def _make_edit_file_handler(root_dir: str | None):
 
 def _make_list_directory_handler(root_dir: str | None):
     """Create a handler for list_directory that ignores extra kwargs."""
-    def handler(dir_path: str = ".", **kwargs) -> dict[str, Any]:
-        return list_directory(dir_path, root_dir)
-    return handler
-
-
-def _make_tree_directory_handler(root_dir: str | None):
-    """Create a handler for tree_directory that ignores extra kwargs."""
     def handler(dir_path: str = ".", max_depth: int = 10, **kwargs) -> dict[str, Any]:
-        return tree_directory(dir_path, max_depth, root_dir)
+        return list_directory(dir_path, max_depth, root_dir)
     return handler
 
 
@@ -439,33 +392,17 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="list_directory",
-            description="List the immediate contents of a directory, showing files and subdirectories (non-recursive).",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "dir_path": {
-                        "type": "string",
-                        "description": "The path to the directory to list (defaults to current directory)",
-                        "default": ".",
-                    },
-                },
-                "required": [],
-            },
-            handler=_make_list_directory_handler(root_dir),
-        ),
-        ToolDefinition(
-            name="tree_directory",
             description=(
-                "Show the directory structure as a tree, recursively displaying files and folders. "
-                "Useful for understanding project layout. Automatically skips common non-essential "
-                "directories like node_modules, __pycache__, .git, venv, etc."
+                "Show the directory structure as a tree with file sizes and dates (like ls -la). "
+                "Recursively displays files and folders. Useful for understanding project layout. "
+                "Automatically skips common non-essential directories like node_modules, __pycache__, .git, venv, etc."
             ),
             parameters={
                 "type": "object",
                 "properties": {
                     "dir_path": {
                         "type": "string",
-                        "description": "The path to the directory to show as tree (defaults to current directory)",
+                        "description": "The path to the directory to list (defaults to current directory)",
                         "default": ".",
                     },
                     "max_depth": {
@@ -476,6 +413,6 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
                 },
                 "required": [],
             },
-            handler=_make_tree_directory_handler(root_dir),
+            handler=_make_list_directory_handler(root_dir),
         ),
     ]

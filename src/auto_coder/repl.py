@@ -203,8 +203,7 @@ The assistant can use these tools:
 - **read_file** - Read file contents with line numbers
 - **write_file** - Write content to a file (creates or overwrites)
 - **edit_file** - Edit a file by replacing exact text matches
-- **list_directory** - List immediate directory contents
-- **tree_directory** - Show directory tree with file sizes and dates (like ls -la)
+- **list_directory** - Show directory tree with file sizes and dates (like ls -la)
 - **run_command** - Execute shell commands
 
 Just describe what you want to do and the assistant will use the appropriate tools.
