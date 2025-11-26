@@ -97,9 +97,19 @@ class Agent:
             chunks.append(chunk)
         return "".join(chunks)
 
-    def reset(self) -> None:
-        """Reset the conversation state."""
+    def reset(self) -> str:
+        """Reset the conversation state and correlation ID.
+
+        Returns:
+            The new correlation ID
+        """
         self.conversation.clear()
+        # Reset correlation ID when conversation is cleared
+        return self.provider.reset_correlation_id()
+
+    def get_correlation_id(self) -> str:
+        """Get the current correlation ID."""
+        return self.provider.get_correlation_id()
 
     async def close(self) -> None:
         """Clean up resources."""

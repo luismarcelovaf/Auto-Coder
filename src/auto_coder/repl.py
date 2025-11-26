@@ -90,8 +90,15 @@ class REPL:
             raise KeyboardInterrupt
 
         if user_input.lower() in ("/clear", "/reset"):
-            self.agent.reset()
-            self.console.print("[dim]Conversation cleared[/]")
+            new_correlation_id = self.agent.reset()
+            self.console.print(
+                f"[dim]Conversation cleared. New correlation ID: {new_correlation_id}[/]"
+            )
+            return
+
+        if user_input.lower() == "/id":
+            correlation_id = self.agent.get_correlation_id()
+            self.console.print(f"[dim]Correlation ID: {correlation_id}[/]")
             return
 
         if user_input.lower() == "/help":
@@ -128,7 +135,8 @@ class REPL:
 # Auto-Coder Commands
 
 - **/help** - Show this help message
-- **/clear** or **/reset** - Clear conversation history
+- **/clear** or **/reset** - Clear conversation history and reset correlation ID
+- **/id** - Show current correlation ID
 - **/quit** or **/exit** - Exit the REPL
 
 # Available Tools
@@ -141,6 +149,12 @@ The assistant can use these tools:
 - **run_command** - Execute shell commands
 
 Just describe what you want to do and the assistant will use the appropriate tools.
+
+# Correlation ID
+
+Each conversation session has a unique correlation ID (x-correlation-id) that is
+sent with all API requests. This helps track related operations on the API platform.
+The correlation ID resets when you use /clear or /reset.
 """
         self.console.print(Markdown(help_text))
 
@@ -153,12 +167,14 @@ Just describe what you want to do and the assistant will use the appropriate too
             style=PROMPT_STYLE,
         )
 
-        # Print welcome message
+        # Print welcome message with correlation ID
+        correlation_id = self.agent.get_correlation_id()
         self.console.print(
             Panel(
                 "[bold]Welcome to Auto-Coder![/]\n\n"
                 "Type your requests and I'll help you with coding tasks.\n"
-                "Type [cyan]/help[/] for available commands.",
+                "Type [cyan]/help[/] for available commands.\n\n"
+                f"[dim]Correlation ID: {correlation_id}[/]",
                 border_style="blue",
             )
         )

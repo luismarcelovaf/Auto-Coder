@@ -33,6 +33,14 @@ auto-coder --base-url https://api.openai.com/v1 --model gpt-4
 auto-coder --base-url https://your-api.com/v1 --api-key your-key --model your-model
 ```
 
+### With SSO Authentication
+
+```bash
+export USE_SSO=true
+export SSO_TOKEN="your-sso-token"  # Or implement token acquisition in auth.py
+auto-coder --base-url https://your-api.com/v1 --model your-model
+```
+
 ## Usage
 
 ### Interactive Mode
@@ -80,6 +88,54 @@ llm:
 - `AUTO_CODER_MODEL` - Override model
 - `AUTO_CODER_API_KEY` - Override API key
 - `OPENAI_API_KEY` - Fallback API key
+- `USE_SSO` - Set to "true" to enable SSO authentication
+- `SSO_TOKEN` - SSO token (if not using interactive SSO flow)
+
+## Authentication
+
+### API Key Authentication
+
+The simplest method - provide an API key via:
+- `--api-key` command line argument
+- `AUTO_CODER_API_KEY` environment variable
+- `api_key` in config file
+
+### SSO Authentication
+
+Set `USE_SSO=true` to enable Single Sign-On. Implement your SSO token acquisition logic in `src/auto_coder/auth.py`:
+
+```python
+async def get_sso_token() -> str | None:
+    # Implement your SSO flow here:
+    # - OAuth2 device flow
+    # - OIDC token exchange
+    # - Azure AD / Entra ID
+    # - Okta, Auth0, etc.
+    pass
+```
+
+### Custom Headers
+
+For APIs requiring custom authentication headers:
+
+```yaml
+llm:
+  auth_headers:
+    X-Custom-Auth: "your-token"
+    X-API-Version: "2024-01"
+```
+
+### Certificate Management
+
+The tool uses `certifi` for SSL certificate verification. To update or customize certificates, implement the `update_certifi()` function in `src/auto_coder/auth.py`.
+
+## Correlation ID
+
+Each conversation session has a unique correlation ID (`x-correlation-id`) that is sent with all API requests. This helps track related operations on the API platform.
+
+- The correlation ID is generated when the session starts
+- It resets when you use `/clear` or `/reset`
+- Use `/id` to view the current correlation ID
 
 ## Available Tools
 
@@ -94,7 +150,8 @@ The assistant can use these tools:
 ## REPL Commands
 
 - `/help` - Show help
-- `/clear` or `/reset` - Clear conversation history
+- `/clear` or `/reset` - Clear conversation history and reset correlation ID
+- `/id` - Show current correlation ID
 - `/quit` or `/exit` - Exit
 
 ## Architecture
@@ -103,6 +160,7 @@ The assistant can use these tools:
 src/auto_coder/
 ├── cli.py              # CLI entry point
 ├── agent.py            # Core agent loop
+├── auth.py             # Authentication (SSO, certificates)
 ├── config.py           # Configuration management
 ├── repl.py             # Interactive REPL
 ├── providers/          # LLM provider implementations
@@ -147,6 +205,24 @@ registry.register(tool)
 ### Adding Custom Providers
 
 Extend the `LLMProvider` base class in `providers/base.py` to support non-OpenAI-compatible APIs.
+
+### Implementing SSO
+
+Edit `src/auto_coder/auth.py` to implement your SSO provider:
+
+```python
+async def get_sso_token() -> str | None:
+    if not is_sso_enabled():
+        return None
+
+    # Example: OAuth2 device flow
+    # 1. Request device code
+    # 2. Display user code and verification URL
+    # 3. Poll for token
+    # 4. Return access token
+
+    return access_token
+```
 
 ## License
 

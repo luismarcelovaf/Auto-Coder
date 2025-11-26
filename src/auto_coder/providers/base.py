@@ -85,17 +85,31 @@ class LLMProvider(ABC):
         self,
         messages: list[Message],
         tools: list[ToolDefinition] | None = None,
-        stream: bool = False,
-    ) -> Message | AsyncIterator[StreamChunk]:
+        stream: bool = True,
+    ) -> AsyncIterator[StreamChunk]:
         """Send a chat request to the LLM.
 
         Args:
             messages: The conversation history
             tools: Available tools for the LLM to use
-            stream: Whether to stream the response
+            stream: Kept for interface compatibility, always streams
 
         Returns:
-            Either a complete Message or an async iterator of StreamChunks
+            An async iterator of StreamChunks (always streaming)
+        """
+        pass
+
+    @abstractmethod
+    def get_correlation_id(self) -> str:
+        """Get the current correlation ID for request tracking."""
+        pass
+
+    @abstractmethod
+    def reset_correlation_id(self) -> str:
+        """Reset the correlation ID (e.g., when conversation is cleared).
+
+        Returns:
+            The new correlation ID
         """
         pass
 

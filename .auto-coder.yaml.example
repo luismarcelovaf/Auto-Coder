@@ -35,3 +35,39 @@ llm:
 # Custom system prompt (optional)
 # system_prompt: |
 #   You are a helpful coding assistant...
+
+# =============================================================================
+# AUTHENTICATION OPTIONS
+# =============================================================================
+#
+# Option 1: API Key (simplest)
+# - Set api_key above, or
+# - Set AUTO_CODER_API_KEY environment variable, or
+# - Set OPENAI_API_KEY environment variable
+#
+# Option 2: SSO Authentication
+# - Set USE_SSO=true environment variable
+# - Implement get_sso_token() in src/auto_coder/auth.py
+# - Or set SSO_TOKEN environment variable for simple token-based SSO
+#
+# Option 3: Custom Headers
+# - Use auth_headers above for custom authentication schemes
+#
+# =============================================================================
+# CORRELATION ID
+# =============================================================================
+#
+# All API requests include an x-correlation-id header to track related
+# operations. The correlation ID:
+# - Is generated automatically when the session starts
+# - Remains the same for all requests in a conversation
+# - Resets when you use /clear or /reset commands
+# - Can be viewed with the /id command
+#
+# =============================================================================
+# CERTIFICATE MANAGEMENT
+# =============================================================================
+#
+# SSL certificates are verified using certifi. To customize:
+# - Implement update_certifi() in src/auto_coder/auth.py
+# - The function is called to update/refresh certificates as needed

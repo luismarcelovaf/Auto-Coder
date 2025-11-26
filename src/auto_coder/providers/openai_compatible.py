@@ -1,11 +1,13 @@
 """OpenAI-compatible API provider."""
 
 import json
+import uuid
 from typing import Any, AsyncIterator
 
 import httpx
 
 from .base import LLMProvider, Message, StreamChunk, ToolCall, ToolDefinition
+from ..auth import get_certifi_path, is_sso_enabled, get_sso_token, get_sso_headers
 
 
 class OpenAICompatibleProvider(LLMProvider):
@@ -19,6 +21,7 @@ class OpenAICompatibleProvider(LLMProvider):
         auth_headers: dict[str, str] | None = None,
         extra_params: dict[str, Any] | None = None,
         timeout: float = 120.0,
+        correlation_id: str | None = None,
     ):
         # Build auth headers from api_key if provided
         headers = auth_headers or {}
@@ -28,17 +31,57 @@ class OpenAICompatibleProvider(LLMProvider):
         super().__init__(base_url, model, headers, extra_params)
         self.timeout = timeout
         self._client: httpx.AsyncClient | None = None
+        self._correlation_id = correlation_id or self._generate_correlation_id()
+        self._sso_token: str | None = None
+
+    @staticmethod
+    def _generate_correlation_id() -> str:
+        """Generate a new correlation ID."""
+        return str(uuid.uuid4())
+
+    def get_correlation_id(self) -> str:
+        """Get the current correlation ID."""
+        return self._correlation_id
+
+    def reset_correlation_id(self) -> str:
+        """Reset the correlation ID (e.g., after /clear or /reset).
+
+        Returns:
+            The new correlation ID
+        """
+        self._correlation_id = self._generate_correlation_id()
+        return self._correlation_id
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
+            # Build headers including correlation ID
+            headers = {
+                "Content-Type": "application/json",
+                **self.auth_headers,
+            }
+
+            # Handle SSO authentication
+            if is_sso_enabled():
+                self._sso_token = await get_sso_token()
+                if self._sso_token:
+                    sso_headers = get_sso_headers(self._sso_token)
+                    headers.update(sso_headers)
+
+            # Use certifi for SSL certificate verification
+            cert_path = get_certifi_path()
+
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(self.timeout),
-                headers={
-                    "Content-Type": "application/json",
-                    **self.auth_headers,
-                },
+                headers=headers,
+                verify=cert_path,
             )
         return self._client
+
+    def _get_request_headers(self) -> dict[str, str]:
+        """Get headers for a specific request, including correlation ID."""
+        return {
+            "x-correlation-id": self._correlation_id,
+        }
 
     def _message_to_dict(self, msg: Message) -> dict[str, Any]:
         """Convert a Message to OpenAI API format."""
@@ -90,15 +133,19 @@ class OpenAICompatibleProvider(LLMProvider):
         self,
         messages: list[Message],
         tools: list[ToolDefinition] | None = None,
-        stream: bool = False,
-    ) -> Message | AsyncIterator[StreamChunk]:
-        """Send a chat completion request."""
+        stream: bool = True,  # Default to True - always use streaming
+    ) -> AsyncIterator[StreamChunk]:
+        """Send a chat completion request.
+
+        Note: This method always uses streaming for consistent behavior.
+        The stream parameter is kept for interface compatibility but is ignored.
+        """
         client = await self._get_client()
 
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": [self._message_to_dict(m) for m in messages],
-            "stream": stream,
+            "stream": True,  # Always stream
             **self.extra_params,
         }
 
@@ -106,34 +153,8 @@ class OpenAICompatibleProvider(LLMProvider):
             payload["tools"] = [t.to_openai_format() for t in tools]
             payload["tool_choice"] = "auto"
 
-        if stream:
-            return self._stream_response(client, payload)
-        else:
-            return await self._complete_response(client, payload)
-
-    async def _complete_response(
-        self, client: httpx.AsyncClient, payload: dict
-    ) -> Message:
-        """Get a complete (non-streaming) response."""
-        response = await client.post(
-            f"{self.base_url}/chat/completions",
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        choice = data["choices"][0]
-        message_data = choice["message"]
-
-        tool_calls = None
-        if "tool_calls" in message_data and message_data["tool_calls"]:
-            tool_calls = self._parse_tool_calls(message_data["tool_calls"])
-
-        return Message(
-            role="assistant",
-            content=message_data.get("content"),
-            tool_calls=tool_calls,
-        )
+        # Always use streaming
+        return self._stream_response(client, payload)
 
     async def _stream_response(
         self, client: httpx.AsyncClient, payload: dict
@@ -142,10 +163,14 @@ class OpenAICompatibleProvider(LLMProvider):
         # Track partial tool calls being built up
         tool_call_buffers: dict[int, dict] = {}
 
+        # Include correlation ID in request headers
+        request_headers = self._get_request_headers()
+
         async with client.stream(
             "POST",
             f"{self.base_url}/chat/completions",
             json=payload,
+            headers=request_headers,
         ) as response:
             response.raise_for_status()
 
