@@ -174,7 +174,8 @@ async def check_and_create_project_file(
         if save_project_context(working_dir, project_content):
             console.print(
                 Panel(
-                    "[green]PROJECT.md created successfully![/]",
+                    "[green]PROJECT.md created successfully![/]\n"
+                    "[dim]Project context will be loaded into this session.[/]",
                     border_style="green",
                 )
             )

@@ -228,11 +228,16 @@ The correlation ID resets when you use /clear or /reset.
 
         # Print welcome message with correlation ID
         correlation_id = self.agent.get_correlation_id()
+        has_project_context = self.agent.conversation.project_context is not None
+
+        project_status = "[green]PROJECT.md loaded[/]" if has_project_context else "[dim]No PROJECT.md[/]"
+
         self.console.print(
             Panel(
                 "[bold]Welcome to Auto-Coder![/]\n\n"
                 "Type your requests and I'll help you with coding tasks.\n"
                 "Type [cyan]/help[/] for available commands.\n\n"
+                f"{project_status}\n"
                 f"[dim]Correlation ID: {correlation_id}[/]",
                 border_style="blue",
             )
