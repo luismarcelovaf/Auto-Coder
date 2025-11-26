@@ -14,15 +14,24 @@ from .authentication_provider import (
     AuthenticationProviderWithClientSideTokenRefresh,
 )
 
+# Flag to track if certifi has been updated
+_certifi_updated = False
+
 
 def update_certifi() -> None:
-    """Update certifi certificates.
+    """Update certifi certificates (only runs once).
 
     This function is a placeholder for custom certificate management.
     Implement your certificate update logic here.
+    Subsequent calls after the first will be no-ops.
     """
+    global _certifi_updated
+    if _certifi_updated:
+        return
+
     # TODO: Implement certificate update logic
-    pass
+
+    _certifi_updated = True
 
 
 def get_certifi_path() -> str:

@@ -55,11 +55,13 @@ def read_file(file_path: str, root_dir: str | None = None) -> dict[str, Any]:
         content = path.read_text(encoding="utf-8")
 
         # Add line numbers for better context
+        # Preserve exact whitespace - tabs and spaces are kept as-is
         lines = content.split("\n")
         numbered_lines = [f"{i+1:4d} | {line}" for i, line in enumerate(lines)]
 
         return {
             "content": "\n".join(numbered_lines),
+            "raw_content": content,  # Include raw content for exact matching
             "path": str(path),
             "lines": len(lines),
         }
@@ -113,7 +115,7 @@ def edit_file(
 
     Args:
         file_path: Path to the file
-        old_string: Exact string to find and replace
+        old_string: Exact string to find and replace (including whitespace)
         new_string: Replacement string
         root_dir: Optional root directory to restrict access
 
@@ -131,7 +133,11 @@ def edit_file(
         # Check that old_string exists and is unique
         count = content.count(old_string)
         if count == 0:
-            return {"error": f"String not found in file: {repr(old_string[:100])}"}
+            # Provide helpful debugging info
+            old_repr = repr(old_string[:200]) if len(old_string) > 200 else repr(old_string)
+            return {
+                "error": f"String not found in file. Make sure whitespace (tabs, spaces, newlines) matches exactly. Searched for: {old_repr}"
+            }
         if count > 1:
             return {
                 "error": f"String appears {count} times in file. Provide more context to make it unique."
@@ -196,6 +202,34 @@ def list_directory(
         return {"error": f"Error listing directory: {e}"}
 
 
+def _make_read_file_handler(root_dir: str | None):
+    """Create a handler for read_file that ignores extra kwargs."""
+    def handler(file_path: str, **kwargs) -> dict[str, Any]:
+        return read_file(file_path, root_dir)
+    return handler
+
+
+def _make_write_file_handler(root_dir: str | None):
+    """Create a handler for write_file that ignores extra kwargs."""
+    def handler(file_path: str, content: str, **kwargs) -> dict[str, Any]:
+        return write_file(file_path, content, root_dir)
+    return handler
+
+
+def _make_edit_file_handler(root_dir: str | None):
+    """Create a handler for edit_file that ignores extra kwargs."""
+    def handler(file_path: str, old_string: str, new_string: str, **kwargs) -> dict[str, Any]:
+        return edit_file(file_path, old_string, new_string, root_dir)
+    return handler
+
+
+def _make_list_directory_handler(root_dir: str | None):
+    """Create a handler for list_directory that ignores extra kwargs."""
+    def handler(dir_path: str = ".", **kwargs) -> dict[str, Any]:
+        return list_directory(dir_path, root_dir)
+    return handler
+
+
 def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
     """Get file system tool definitions.
 
@@ -208,7 +242,10 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="read_file",
-            description="Read the contents of a file. Returns the file content with line numbers.",
+            description=(
+                "Read the contents of a file. Returns the file content with line numbers. "
+                "The content preserves exact whitespace (tabs, spaces) for accurate editing."
+            ),
             parameters={
                 "type": "object",
                 "properties": {
@@ -219,11 +256,14 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
                 },
                 "required": ["file_path"],
             },
-            handler=lambda file_path: read_file(file_path, root_dir),
+            handler=_make_read_file_handler(root_dir),
         ),
         ToolDefinition(
             name="write_file",
-            description="Write content to a file. Creates the file if it doesn't exist, or overwrites if it does.",
+            description=(
+                "Write content to a file. Creates the file if it doesn't exist, or overwrites if it does. "
+                "Use exact whitespace (tabs/spaces) as needed for proper indentation."
+            ),
             parameters={
                 "type": "object",
                 "properties": {
@@ -233,16 +273,20 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
                     },
                     "content": {
                         "type": "string",
-                        "description": "The content to write to the file",
+                        "description": "The content to write to the file (preserve exact indentation)",
                     },
                 },
                 "required": ["file_path", "content"],
             },
-            handler=lambda file_path, content: write_file(file_path, content, root_dir),
+            handler=_make_write_file_handler(root_dir),
         ),
         ToolDefinition(
             name="edit_file",
-            description="Edit a file by replacing an exact string match. The old_string must appear exactly once in the file.",
+            description=(
+                "Edit a file by replacing an exact string match. The old_string must appear exactly once in the file. "
+                "IMPORTANT: old_string must match EXACTLY including all whitespace (tabs, spaces, newlines). "
+                "Copy the exact text from read_file output, preserving all indentation."
+            ),
             parameters={
                 "type": "object",
                 "properties": {
@@ -252,18 +296,16 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
                     },
                     "old_string": {
                         "type": "string",
-                        "description": "The exact string to find and replace (must be unique in the file)",
+                        "description": "The exact string to find and replace, including all whitespace (tabs, spaces, newlines)",
                     },
                     "new_string": {
                         "type": "string",
-                        "description": "The string to replace it with",
+                        "description": "The string to replace it with, with proper indentation",
                     },
                 },
                 "required": ["file_path", "old_string", "new_string"],
             },
-            handler=lambda file_path, old_string, new_string: edit_file(
-                file_path, old_string, new_string, root_dir
-            ),
+            handler=_make_edit_file_handler(root_dir),
         ),
         ToolDefinition(
             name="list_directory",
@@ -279,6 +321,6 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
                 },
                 "required": [],
             },
-            handler=lambda dir_path=".": list_directory(dir_path, root_dir),
+            handler=_make_list_directory_handler(root_dir),
         ),
     ]

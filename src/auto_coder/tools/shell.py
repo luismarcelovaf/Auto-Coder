@@ -71,18 +71,18 @@ async def run_command(
         }
 
     except FileNotFoundError:
-        return {"error": f"Shell not found", "return_code": -1}
+        return {"error": "Shell not found", "return_code": -1}
     except Exception as e:
         return {"error": f"Error executing command: {e}", "return_code": -1}
 
 
-def run_command_sync(
-    command: str,
-    working_dir: str | None = None,
-    timeout: float = 120.0,
-) -> dict[str, Any]:
-    """Synchronous wrapper for run_command."""
-    return asyncio.run(run_command(command, working_dir, timeout))
+def _make_run_command_handler(default_working_dir: str | None):
+    """Create an async handler for run_command."""
+    async def handler(command: str, working_dir: str | None = None, **kwargs) -> dict[str, Any]:
+        # Use provided working_dir or fall back to default
+        effective_dir = working_dir or default_working_dir
+        return await run_command(command, effective_dir)
+    return handler
 
 
 def get_shell_tools(working_dir: str | None = None) -> list[ToolDefinition]:
@@ -116,8 +116,6 @@ def get_shell_tools(working_dir: str | None = None) -> list[ToolDefinition]:
                 },
                 "required": ["command"],
             },
-            handler=lambda command, working_dir=working_dir: asyncio.run(
-                run_command(command, working_dir)
-            ),
+            handler=_make_run_command_handler(working_dir),
         ),
     ]

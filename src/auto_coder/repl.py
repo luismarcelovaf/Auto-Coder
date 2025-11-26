@@ -24,6 +24,47 @@ PROMPT_STYLE = Style.from_dict({
 })
 
 
+class ThinkingIndicator:
+    """Animated 'Thinking...' indicator."""
+
+    def __init__(self, console: Console):
+        self.console = console
+        self._task: asyncio.Task | None = None
+        self._running = False
+
+    async def _animate(self) -> None:
+        """Run the animation loop."""
+        dots = [".", "..", "..."]
+        idx = 0
+        try:
+            while self._running:
+                # Clear line and print new state
+                self.console.print(f"\r[cyan]Thinking{dots[idx]}[/]   ", end="")
+                idx = (idx + 1) % len(dots)
+                await asyncio.sleep(0.4)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            # Clear the thinking line
+            self.console.print("\r" + " " * 20 + "\r", end="")
+
+    def start(self) -> None:
+        """Start the thinking animation."""
+        self._running = True
+        self._task = asyncio.create_task(self._animate())
+
+    async def stop(self) -> None:
+        """Stop the thinking animation."""
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+            self._task = None
+
+
 class REPL:
     """Interactive REPL for the auto-coder agent."""
 
@@ -114,18 +155,35 @@ class REPL:
 
         # Stream the response
         response_text = ""
+        first_chunk_received = False
 
         self.console.print()  # Blank line before response
 
-        with Live(Text(""), console=self.console, refresh_per_second=10) as live:
-            async for chunk in self.agent.run(user_input):
-                response_text += chunk
-                # Render as markdown for nice formatting
-                try:
-                    live.update(Markdown(response_text))
-                except Exception:
-                    # Fall back to plain text if markdown fails
-                    live.update(Text(response_text))
+        # Start thinking indicator
+        thinking = ThinkingIndicator(self.console)
+        thinking.start()
+
+        try:
+            with Live(Text(""), console=self.console, refresh_per_second=10, auto_refresh=False) as live:
+                async for chunk in self.agent.run(user_input):
+                    # Stop thinking indicator on first chunk
+                    if not first_chunk_received:
+                        await thinking.stop()
+                        first_chunk_received = True
+
+                    response_text += chunk
+                    # Render as markdown for nice formatting
+                    try:
+                        live.update(Markdown(response_text))
+                        live.refresh()
+                    except Exception:
+                        # Fall back to plain text if markdown fails
+                        live.update(Text(response_text))
+                        live.refresh()
+        finally:
+            # Ensure thinking indicator is stopped
+            if not first_chunk_received:
+                await thinking.stop()
 
         self.console.print()  # Blank line after response
 
