@@ -12,7 +12,7 @@ import yaml
 class LLMConfig:
     """Configuration for the LLM provider."""
 
-    base_url: str = "http://localhost:11434/v1"  # Default to Ollama
+    base_url: str = "https://<URL>/genai/dev/v1"
     model: str = "llama3.2"
     api_key: str | None = None
     auth_headers: dict[str, str] = field(default_factory=dict)

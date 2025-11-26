@@ -15,7 +15,7 @@ class OpenAICompatibleProvider(LLMProvider):
 
     def __init__(
         self,
-        base_url: str = "https://api.openai.com/v1",
+        base_url: str = "https://<URL>/genai/dev/v1",
         model: str = "gpt-4",
         api_key: str | None = None,
         auth_headers: dict[str, str] | None = None,

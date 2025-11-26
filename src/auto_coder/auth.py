@@ -38,9 +38,11 @@ def is_sso_enabled() -> bool:
     """Check if SSO authentication is enabled.
 
     Returns:
-        True if USE_SSO environment variable is set to 'true' (case-insensitive)
+        True if USE_SSO environment variable is not set or set to 'true' (case-insensitive).
+        Only returns False if explicitly set to 'false'.
     """
-    return os.environ.get("USE_SSO", "").lower() == "true"
+    value = os.environ.get("USE_SSO", "true").lower()
+    return value != "false"
 
 
 def is_server_side_token_refresh_enabled() -> bool:
