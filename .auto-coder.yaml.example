@@ -1,0 +1,37 @@
+# Auto-Coder Configuration Example
+# Copy this file to ~/.auto-coder.yaml or ./.auto-coder.yaml
+
+llm:
+  # API endpoint URL (OpenAI-compatible)
+  base_url: "http://localhost:11434/v1"  # Ollama default
+  # base_url: "https://api.openai.com/v1"  # OpenAI
+  # base_url: "https://api.together.xyz/v1"  # Together AI
+  # base_url: "http://localhost:1234/v1"  # LM Studio
+
+  # Model to use
+  model: "llama3.2"
+  # model: "gpt-4"
+  # model: "mistralai/Mixtral-8x7B-Instruct-v0.1"
+
+  # API key (optional for local models like Ollama)
+  api_key: null
+
+  # Custom authentication headers (for non-standard APIs)
+  auth_headers: {}
+    # X-Custom-Auth: "your-token"
+    # X-API-Version: "2024-01"
+
+  # Additional parameters to pass to the API
+  extra_params: {}
+    # temperature: 0.7
+    # max_tokens: 4096
+
+  # Request timeout in seconds
+  timeout: 120.0
+
+# Default working directory (defaults to current directory)
+# working_dir: "/path/to/your/project"
+
+# Custom system prompt (optional)
+# system_prompt: |
+#   You are a helpful coding assistant...
