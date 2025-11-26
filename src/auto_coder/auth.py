@@ -4,6 +4,7 @@ import os
 from typing import Any
 
 import certifi
+import requests
 
 
 def update_certifi() -> None:
