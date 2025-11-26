@@ -202,6 +202,87 @@ def list_directory(
         return {"error": f"Error listing directory: {e}"}
 
 
+def tree_directory(
+    dir_path: str = ".",
+    max_depth: int = 10,
+    root_dir: str | None = None,
+) -> dict[str, Any]:
+    """Show directory structure as a tree.
+
+    Args:
+        dir_path: Path to the directory
+        max_depth: Maximum depth to traverse (default 5)
+        root_dir: Optional root directory to restrict access
+
+    Returns:
+        Dict with 'tree' string or 'error' key
+    """
+    # Directories to skip
+    skip_dirs = {
+        ".git", ".svn", ".hg", ".bzr",
+        "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+        "venv", ".venv", "env", ".env", "virtualenv",
+        "dist", "build", "target", "out", "bin", "obj",
+        ".idea", ".vscode", ".vs",
+        "coverage", ".coverage", "htmlcov", ".nyc_output",
+        ".tox", ".nox",
+        ".next", ".nuxt", ".output",
+        ".cache", ".parcel-cache",
+    }
+
+    try:
+        path = _validate_path(dir_path, root_dir)
+
+        if not path.exists():
+            return {"error": f"Directory not found: {dir_path}"}
+
+        if not path.is_dir():
+            return {"error": f"Not a directory: {dir_path}"}
+
+        lines = [f"{path.name}/"]
+
+        def add_entries(current_path: Path, prefix: str = "", depth: int = 0):
+            if depth >= max_depth:
+                return
+
+            try:
+                items = sorted(current_path.iterdir(), key=lambda x: (x.is_file(), x.name.lower()))
+            except PermissionError:
+                return
+
+            # Filter out skipped directories
+            filtered_items = []
+            for item in items:
+                if item.is_dir() and item.name.lower() in skip_dirs:
+                    continue
+                if item.name.startswith(".") and item.is_dir():
+                    continue
+                filtered_items.append(item)
+
+            for i, item in enumerate(filtered_items):
+                is_last = i == len(filtered_items) - 1
+                connector = "└── " if is_last else "├── "
+
+                if item.is_dir():
+                    lines.append(f"{prefix}{connector}{item.name}/")
+                    extension = "    " if is_last else "│   "
+                    add_entries(item, prefix + extension, depth + 1)
+                else:
+                    lines.append(f"{prefix}{connector}{item.name}")
+
+        add_entries(path)
+
+        return {
+            "path": str(path),
+            "tree": "\n".join(lines),
+            "depth": max_depth,
+        }
+    except PermissionError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": f"Error creating directory tree: {e}"}
+
+
 def _make_read_file_handler(root_dir: str | None):
     """Create a handler for read_file that ignores extra kwargs."""
     def handler(file_path: str, **kwargs) -> dict[str, Any]:
@@ -227,6 +308,13 @@ def _make_list_directory_handler(root_dir: str | None):
     """Create a handler for list_directory that ignores extra kwargs."""
     def handler(dir_path: str = ".", **kwargs) -> dict[str, Any]:
         return list_directory(dir_path, root_dir)
+    return handler
+
+
+def _make_tree_directory_handler(root_dir: str | None):
+    """Create a handler for tree_directory that ignores extra kwargs."""
+    def handler(dir_path: str = ".", max_depth: int = 10, **kwargs) -> dict[str, Any]:
+        return tree_directory(dir_path, max_depth, root_dir)
     return handler
 
 
@@ -309,7 +397,7 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="list_directory",
-            description="List the contents of a directory, showing files and subdirectories.",
+            description="List the immediate contents of a directory, showing files and subdirectories (non-recursive).",
             parameters={
                 "type": "object",
                 "properties": {
@@ -322,5 +410,30 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
                 "required": [],
             },
             handler=_make_list_directory_handler(root_dir),
+        ),
+        ToolDefinition(
+            name="tree_directory",
+            description=(
+                "Show the directory structure as a tree, recursively displaying files and folders. "
+                "Useful for understanding project layout. Automatically skips common non-essential "
+                "directories like node_modules, __pycache__, .git, venv, etc."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "dir_path": {
+                        "type": "string",
+                        "description": "The path to the directory to show as tree (defaults to current directory)",
+                        "default": ".",
+                    },
+                    "max_depth": {
+                        "type": "integer",
+                        "description": "Maximum depth to traverse (default 10)",
+                        "default": 10,
+                    },
+                },
+                "required": [],
+            },
+            handler=_make_tree_directory_handler(root_dir),
         ),
     ]
