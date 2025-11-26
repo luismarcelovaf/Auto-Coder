@@ -23,7 +23,7 @@ Guidelines:
 - Be careful with destructive operations (deleting files, force pushing, etc.)
 
 Current working directory: {cwd}
-"""
+{project_context}"""
 
 
 class ConversationManager:
@@ -33,10 +33,19 @@ class ConversationManager:
         self,
         system_prompt: str | None = None,
         working_dir: str | None = None,
+        project_context: str | None = None,
     ):
         self.working_dir = working_dir or os.getcwd()
+        self.project_context = project_context
+
+        # Format project context section
+        project_context_section = ""
+        if project_context:
+            project_context_section = f"\n## Project Context\n\n{project_context}"
+
         self.system_prompt = (system_prompt or DEFAULT_SYSTEM_PROMPT).format(
-            cwd=self.working_dir
+            cwd=self.working_dir,
+            project_context=project_context_section,
         )
         self._messages: list[Message] = []
         self._initialize()
