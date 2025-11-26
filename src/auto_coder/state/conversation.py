@@ -13,7 +13,7 @@ DEFAULT_SYSTEM_PROMPT = """You are an AI coding assistant. You help users with s
 - Debugging and fixing issues
 - Explaining code and concepts
 
-## IMPORTANT: Tool Usage
+## IMPORTANT: Tool Usage Rules
 
 You have access to the following tools and MUST use them to complete tasks:
 - **read_file**: Read file contents - USE THIS before editing any file
@@ -22,13 +22,21 @@ You have access to the following tools and MUST use them to complete tasks:
 - **list_directory**: List directory contents - USE THIS to explore the project structure
 - **run_command**: Execute shell commands - USE THIS for git, build, test commands, etc.
 
-**CRITICAL**: When the user asks you to perform an action (read, write, edit, list, run), you MUST actually invoke the appropriate tool. Do NOT just describe what you would do - actually DO IT by calling the tool.
+### CRITICAL RULES:
 
-For example:
-- If asked to "update the file", you MUST call edit_file or write_file
-- If asked to "read the code", you MUST call read_file
-- If asked to "list files", you MUST call list_directory
-- If asked to "run tests", you MUST call run_command
+1. **ONE TOOL AT A TIME**: Call only ONE tool per response. After calling a tool, STOP and wait for the tool result before proceeding. Do NOT chain multiple tool calls in a single response.
+
+2. **ALWAYS USE TOOLS**: When the user asks you to perform an action (read, write, edit, list, run), you MUST actually invoke the appropriate tool. Do NOT just describe what you would do - actually DO IT by calling the tool.
+
+3. **WAIT FOR RESULTS**: After each tool call, you will receive the tool's output. Use this output to inform your next action or response to the user.
+
+4. **READ BEFORE EDIT**: Always read_file before using edit_file to ensure you have the current file contents.
+
+### Examples:
+- If asked to "update the file": First call read_file, wait for result, then call edit_file
+- If asked to "read the code": Call read_file and wait for result
+- If asked to "list files": Call list_directory and wait for result
+- If asked to "run tests": Call run_command and wait for result
 
 ## File Editing Guidelines
 
@@ -45,8 +53,7 @@ When using edit_file:
 - Ask clarifying questions if the user's request is ambiguous
 - Be careful with destructive operations (deleting files, force pushing, etc.)
 
-Current working directory: {cwd}
-{project_context}"""
+Current working directory: {cwd}"""
 
 
 class ConversationManager:
@@ -61,23 +68,34 @@ class ConversationManager:
         self.working_dir = working_dir or os.getcwd()
         self.project_context = project_context
 
-        # Format project context section
-        project_context_section = ""
-        if project_context:
-            project_context_section = f"\n## Project Context\n\n{project_context}"
-
+        # System prompt does NOT include project context anymore
         self.system_prompt = (system_prompt or DEFAULT_SYSTEM_PROMPT).format(
             cwd=self.working_dir,
-            project_context=project_context_section,
         )
         self._messages: list[Message] = []
         self._initialize()
 
     def _initialize(self) -> None:
-        """Initialize the conversation with a system message."""
+        """Initialize the conversation with system message and optional project context."""
         self._messages = [
             Message(role="system", content=self.system_prompt)
         ]
+
+        # Add project context as a separate user message if available
+        # This keeps it separate from the core instructions in the system prompt
+        if self.project_context:
+            self._messages.append(
+                Message(
+                    role="user",
+                    content=f"Here is the PROJECT.md file that describes this codebase. Use this as context for understanding the project:\n\n{self.project_context}"
+                )
+            )
+            self._messages.append(
+                Message(
+                    role="assistant",
+                    content="I've reviewed the PROJECT.md file and understand the project structure and context. I'm ready to help you with this codebase. What would you like me to do?"
+                )
+            )
 
     def add_user_message(self, content: str) -> None:
         """Add a user message to the conversation."""

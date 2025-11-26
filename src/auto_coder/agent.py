@@ -32,9 +32,9 @@ class Agent:
 
         This handles the full agentic loop:
         1. Send user message to LLM
-        2. If LLM requests tool calls, execute them
-        3. Send tool results back to LLM
-        4. Repeat until LLM gives final response
+        2. If LLM requests a tool call, execute it (ONE at a time)
+        3. Send tool result back to LLM (new API request)
+        4. Repeat until LLM gives final response (no tool calls)
 
         Args:
             user_input: The user's message
@@ -66,26 +66,33 @@ class Agent:
                 if chunk.tool_calls:
                     tool_calls = chunk.tool_calls
 
-            # Add assistant message to conversation
-            self.conversation.add_assistant_message(
-                content=response_content if response_content else None,
-                tool_calls=tool_calls if tool_calls else None,
-            )
-
-            # If no tool calls, we're done
+            # If no tool calls, we're done - add final message and exit
             if not tool_calls:
+                if response_content:
+                    self.conversation.add_assistant_message(content=response_content)
                 break
 
-            # Execute tool calls
-            for tool_call in tool_calls:
-                if self.on_tool_start:
-                    self.on_tool_start(tool_call)
+            # Process only the FIRST tool call (one at a time)
+            # This ensures we make a new API request after each tool execution
+            tool_call = tool_calls[0]
 
-                result = await self.tools.execute_async(tool_call)
-                self.conversation.add_tool_result(result)
+            # Add assistant message with just this one tool call
+            self.conversation.add_assistant_message(
+                content=response_content if response_content else None,
+                tool_calls=[tool_call],
+            )
 
-                if self.on_tool_end:
-                    self.on_tool_end(tool_call.name, result.content)
+            # Execute the tool
+            if self.on_tool_start:
+                self.on_tool_start(tool_call)
+
+            result = await self.tools.execute_async(tool_call)
+            self.conversation.add_tool_result(result)
+
+            if self.on_tool_end:
+                self.on_tool_end(tool_call.name, result.content)
+
+            # Loop continues - will make a new API request with the tool result
 
         if iteration >= self.max_tool_iterations:
             yield "\n\n[Reached maximum tool iterations]"
