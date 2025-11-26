@@ -170,6 +170,11 @@ class OpenAICompatibleProvider(LLMProvider):
         if DEBUG:
             print("\n=== DEBUG: API Request ===")
             print(f"URL: {self.base_url}/chat/completions")
+            print(f"Model: {self.model}")
+            if payload.get("tools"):
+                print(f"Tools ({len(payload['tools'])}):")
+                for t in payload["tools"]:
+                    print(f"  - {t['function']['name']}: {t['function']['description'][:80]}...")
             print(f"Messages ({len(formatted_messages)}):")
             for i, msg in enumerate(formatted_messages):
                 print(f"  [{i}] role={msg.get('role')}, tool_call_id={msg.get('tool_call_id')}")
