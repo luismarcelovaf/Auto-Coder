@@ -106,20 +106,51 @@ class REPL:
 
     def _format_tool_result(self, name: str, result: str) -> Panel:
         """Format a tool result for display."""
+        max_len = 2000
+        border_style = "green"
+
         # Try to parse as JSON for better formatting
         try:
             parsed = json.loads(result)
-            if "error" in parsed:
+
+            # Special handling for command results - show stdout/stderr
+            if name == "run_command" and isinstance(parsed, dict):
+                parts = []
+
+                if parsed.get("status") == "FAILED":
+                    border_style = "red"
+                    if parsed.get("error"):
+                        parts.append(f"[red]{parsed['error']}[/]")
+
+                if parsed.get("stdout"):
+                    stdout = parsed["stdout"]
+                    if len(stdout) > max_len:
+                        stdout = stdout[:max_len] + "..."
+                    parts.append(f"[dim]stdout:[/]\n{stdout}")
+
+                if parsed.get("stderr"):
+                    stderr = parsed["stderr"]
+                    if len(stderr) > max_len:
+                        stderr = stderr[:max_len] + "..."
+                    parts.append(f"[dim]stderr:[/]\n{stderr}")
+
+                result_text = Text.from_markup("\n\n".join(parts)) if parts else Text("(no output)")
+
+            elif "error" in parsed:
+                border_style = "red"
                 result_text = Text(parsed["error"], style="red")
             else:
-                result_text = Text(result[:1000] + ("..." if len(result) > 1000 else ""))
+                display = result[:max_len] + ("..." if len(result) > max_len else "")
+                result_text = Text(display)
+
         except json.JSONDecodeError:
-            result_text = Text(result[:1000] + ("..." if len(result) > 1000 else ""))
+            display = result[:max_len] + ("..." if len(result) > max_len else "")
+            result_text = Text(display)
 
         return Panel(
             result_text,
-            title=f"[bold green]{name} result[/]",
-            border_style="green",
+            title=f"[bold]{name} result[/]",
+            border_style=border_style,
             padding=(0, 1),
         )
 
