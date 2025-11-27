@@ -328,6 +328,105 @@ def edit_file(
         return {"status": "FAILED", "error": f"Error editing file: {e}"}
 
 
+def search_files(
+    pattern: str,
+    dir_path: str = ".",
+    root_dir: str | None = None,
+) -> dict[str, Any]:
+    """Search for files matching a regex pattern.
+
+    Args:
+        pattern: Regex pattern to match file paths against
+        dir_path: Directory to search in (defaults to current directory)
+        root_dir: Optional root directory to restrict access
+
+    Returns:
+        Dict with 'matches' list or 'error' key
+    """
+    import re
+
+    # Directories to skip
+    skip_dirs = {
+        ".git", ".svn", ".hg", ".bzr",
+        "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+        "venv", ".venv", "env", ".env", "virtualenv",
+        "dist", "build", "target", "out", "bin", "obj",
+        ".idea", ".vscode", ".vs",
+        "coverage", ".coverage", "htmlcov", ".nyc_output",
+        ".tox", ".nox",
+        ".next", ".nuxt", ".output",
+        ".cache", ".parcel-cache",
+    }
+
+    try:
+        path = _validate_path(dir_path, root_dir)
+
+        if not path.exists():
+            return {"status": "FAILED", "error": f"Directory not found: {dir_path}"}
+
+        if not path.is_dir():
+            return {"status": "FAILED", "error": f"Not a directory: {dir_path}"}
+
+        # Compile regex
+        try:
+            regex = re.compile(pattern, re.IGNORECASE)
+        except re.error as e:
+            return {"status": "FAILED", "error": f"Invalid regex pattern: {e}"}
+
+        matches = []
+        max_matches = 100  # Limit results to avoid overwhelming output
+
+        def scan_dir(current_path: Path, rel_prefix: str = ""):
+            nonlocal matches
+
+            if len(matches) >= max_matches:
+                return
+
+            try:
+                items = sorted(current_path.iterdir(), key=lambda x: (x.is_file(), x.name.lower()))
+            except PermissionError:
+                return
+
+            for item in items:
+                if len(matches) >= max_matches:
+                    return
+
+                # Build relative path for matching
+                rel_path = f"{rel_prefix}/{item.name}" if rel_prefix else item.name
+
+                if item.is_dir():
+                    # Skip hidden and common non-essential directories
+                    if item.name.lower() in skip_dirs or item.name.startswith("."):
+                        continue
+                    scan_dir(item, rel_path)
+                else:
+                    # Check if file path matches regex
+                    if regex.search(rel_path) or regex.search(item.name):
+                        matches.append({
+                            "path": str(item),
+                            "relative_path": rel_path,
+                            "name": item.name,
+                            "size": _format_size(item.stat().st_size),
+                        })
+
+        scan_dir(path)
+
+        truncated = len(matches) >= max_matches
+
+        return {
+            "status": "SUCCESS",
+            "matches": matches,
+            "count": len(matches),
+            "truncated": truncated,
+            "message": f"Found {len(matches)} files matching '{pattern}'" + (" (truncated)" if truncated else ""),
+        }
+
+    except PermissionError as e:
+        return {"status": "FAILED", "error": str(e)}
+    except Exception as e:
+        return {"status": "FAILED", "error": f"Error searching files: {e}"}
+
+
 def delete_file(
     file_path: str,
     root_dir: str | None = None,
@@ -535,6 +634,13 @@ def _make_delete_file_handler(root_dir: str | None):
     return handler
 
 
+def _make_search_files_handler(root_dir: str | None):
+    """Create a handler for search_files that ignores extra kwargs."""
+    def handler(pattern: str, dir_path: str = ".", **kwargs) -> dict[str, Any]:
+        return search_files(pattern, dir_path, root_dir)
+    return handler
+
+
 def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
     """Get file system tool definitions.
 
@@ -676,5 +782,29 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
                 "required": ["file_path"],
             },
             handler=_make_delete_file_handler(root_dir),
+        ),
+        ToolDefinition(
+            name="search_files",
+            description=(
+                "Search for files matching a regex pattern. Use this to find files when you don't know "
+                r"the exact path. Returns matching file paths. Examples: '.*\.py$' for Python files, "
+                "'test.*' for test files, 'config' for any file with 'config' in the name."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "pattern": {
+                        "type": "string",
+                        "description": "Regex pattern to match against file paths (case-insensitive)",
+                    },
+                    "dir_path": {
+                        "type": "string",
+                        "description": "Directory to search in (defaults to current directory)",
+                        "default": ".",
+                    },
+                },
+                "required": ["pattern"],
+            },
+            handler=_make_search_files_handler(root_dir),
         ),
     ]

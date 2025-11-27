@@ -224,6 +224,7 @@ class REPL:
 # Available Tools
 
 The assistant can use these tools:
+- **search_files** - Find files by regex pattern (e.g., "auth\.py", ".*\.tsx$")
 - **read_file** - Read file contents with line numbers
 - **write_file** - Write content to a file (creates or overwrites)
 - **edit_file** - Edit a file by replacing exact text matches or line ranges
