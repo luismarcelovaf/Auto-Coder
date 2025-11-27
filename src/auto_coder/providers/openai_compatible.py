@@ -155,6 +155,19 @@ class OpenAICompatibleProvider(LLMProvider):
 
         formatted_messages = [self._message_to_dict(m) for m in messages]
 
+        # Build tools description to embed in system message
+        tools_description = ""
+        if tools:
+            tools_description = "\n\n## TOOL DEFINITIONS (use these exact names and parameters):\n\n"
+            for t in tools:
+                tools_description += f"### {t.name}\n"
+                tools_description += f"{t.description}\n"
+                tools_description += f"Parameters: {json.dumps(t.parameters, indent=2)}\n\n"
+
+        # Inject tools into the system message so it comes AFTER our "IGNORE PREVIOUS" instruction
+        if formatted_messages and formatted_messages[0].get("role") == "system" and tools_description:
+            formatted_messages[0]["content"] = formatted_messages[0].get("content", "") + tools_description
+
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": formatted_messages,
@@ -162,6 +175,7 @@ class OpenAICompatibleProvider(LLMProvider):
             **self.extra_params,
         }
 
+        # Still include tools in API format for proper function calling
         if tools:
             payload["tools"] = [t.to_openai_format() for t in tools]
             payload["tool_choice"] = "auto"
