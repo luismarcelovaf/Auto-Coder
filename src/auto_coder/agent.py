@@ -58,27 +58,27 @@ class Agent:
                 stream=True,
             )
 
+            # Collect response but DON'T yield yet - wait to see if there's a tool call
             async for chunk in stream:
                 if chunk.content:
                     response_content += chunk.content
-                    yield chunk.content
 
                 if chunk.tool_calls:
                     tool_calls = chunk.tool_calls
 
-            # If no tool calls, we're done - add final message and exit
+            # If no tool calls, we're done - yield the response and exit
             if not tool_calls:
                 if response_content:
+                    yield response_content
                     self.conversation.add_assistant_message(content=response_content)
                 break
 
-            # Process only the FIRST tool call (one at a time)
-            # This ensures we make a new API request after each tool execution
+            # Tool call detected - DISCARD any text response (it's premature reasoning)
+            # Only add the tool call to conversation, no content
             tool_call = tool_calls[0]
 
-            # Add assistant message with just this one tool call
             self.conversation.add_assistant_message(
-                content=response_content if response_content else None,
+                content=None,  # Discard text when there's a tool call
                 tool_calls=[tool_call],
             )
 
