@@ -148,22 +148,25 @@ def edit_file(
     start_line: int | None = None,
     end_line: int | None = None,
     insert_line: int | None = None,
+    delete_lines: bool = False,
     root_dir: str | None = None,
 ) -> dict[str, Any]:
-    """Edit a file by replacing text, replacing lines, or inserting new lines.
+    """Edit a file by replacing text, replacing/deleting lines, or inserting new lines.
 
-    Three modes of operation:
+    Four modes of operation:
     1. String replacement: Provide old_string and new_string to replace exact text
     2. Line replacement: Provide start_line, end_line, and new_string to replace lines
-    3. Insert mode: Provide insert_line and new_string to insert new lines after that line
+    3. Line deletion: Provide start_line, end_line, and delete_lines=True to remove lines entirely
+    4. Insert mode: Provide insert_line and new_string to insert new lines after that line
 
     Args:
         file_path: Path to the file
         old_string: Exact string to find and replace (for string mode)
-        new_string: Replacement/insert string (required for all modes)
-        start_line: Starting line number for line-based replacement (1-based, inclusive)
-        end_line: Ending line number for line-based replacement (1-based, inclusive)
+        new_string: Replacement/insert string (use empty string "" to delete in string mode)
+        start_line: Starting line number for line-based operations (1-based, inclusive)
+        end_line: Ending line number for line-based operations (1-based, inclusive)
         insert_line: Line number after which to insert new content (0 = insert at beginning)
+        delete_lines: If True with start_line/end_line, delete those lines entirely
         root_dir: Optional root directory to restrict access
 
     Returns:
@@ -221,13 +224,7 @@ def edit_file(
             }
 
         elif start_line is not None and end_line is not None:
-            # Line-based replacement mode
-            if new_string is None:
-                return {
-                    "status": "FAILED",
-                    "error": "new_string is required when using line-based replacement"
-                }
-
+            # Line-based replacement or deletion mode
             lines = content.split("\n")
             total_lines = len(lines)
 
@@ -257,23 +254,44 @@ def edit_file(
 
             # Get the old content for reporting
             old_lines = lines[start_idx:end_idx]
-            old_content = "\n".join(old_lines)
+            lines_removed = len(old_lines)
 
-            # Replace the lines
-            new_lines = new_string.split("\n")
-            lines[start_idx:end_idx] = new_lines
+            if delete_lines:
+                # Delete mode - remove lines entirely
+                del lines[start_idx:end_idx]
+                new_content = "\n".join(lines)
+                path.write_text(new_content, encoding="utf-8")
 
-            new_content = "\n".join(lines)
-            path.write_text(new_content, encoding="utf-8")
+                return {
+                    "status": "SUCCESS",
+                    "success": True,
+                    "message": f"Deleted lines {start_line}-{end_line} ({lines_removed} lines removed)",
+                    "path": str(path),
+                    "lines_deleted": lines_removed,
+                }
+            else:
+                # Replacement mode - need new_string
+                if new_string is None:
+                    return {
+                        "status": "FAILED",
+                        "error": "new_string is required when using line-based replacement (use delete_lines=True to delete)"
+                    }
 
-            return {
-                "status": "SUCCESS",
-                "success": True,
-                "message": f"Replaced lines {start_line}-{end_line} ({end_line - start_line + 1} lines) with {len(new_lines)} new lines",
-                "path": str(path),
-                "lines_replaced": end_line - start_line + 1,
-                "new_lines_count": len(new_lines),
-            }
+                # Replace the lines
+                new_lines = new_string.split("\n")
+                lines[start_idx:end_idx] = new_lines
+
+                new_content = "\n".join(lines)
+                path.write_text(new_content, encoding="utf-8")
+
+                return {
+                    "status": "SUCCESS",
+                    "success": True,
+                    "message": f"Replaced lines {start_line}-{end_line} ({lines_removed} lines) with {len(new_lines)} new lines",
+                    "path": str(path),
+                    "lines_replaced": lines_removed,
+                    "new_lines_count": len(new_lines),
+                }
 
         elif old_string is not None:
             # String-based replacement mode
@@ -656,9 +674,10 @@ def _make_edit_file_handler(root_dir: str | None):
         start_line: int | None = None,
         end_line: int | None = None,
         insert_line: int | None = None,
+        delete_lines: bool = False,
         **kwargs
     ) -> dict[str, Any]:
-        return edit_file(file_path, old_string, new_string, start_line, end_line, insert_line, root_dir)
+        return edit_file(file_path, old_string, new_string, start_line, end_line, insert_line, delete_lines, root_dir)
     return handler
 
 
@@ -745,10 +764,11 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
         ToolDefinition(
             name="edit_file",
             description=(
-                "Edit a file using one of three modes: "
+                "Edit a file using one of four modes: "
                 "(1) STRING MODE: Provide old_string and new_string to replace exact text. "
-                "(2) LINE MODE: Provide start_line, end_line, and new_string to replace lines. "
-                "(3) INSERT MODE: Provide insert_line and new_string to insert new lines (0 = beginning)."
+                "(2) LINE REPLACE: Provide start_line, end_line, and new_string to replace lines. "
+                "(3) LINE DELETE: Provide start_line, end_line, and delete_lines=true to remove lines entirely. "
+                "(4) INSERT MODE: Provide insert_line and new_string to insert new lines (0 = beginning)."
             ),
             parameters={
                 "type": "object",
@@ -763,22 +783,27 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
                     },
                     "new_string": {
                         "type": "string",
-                        "description": "The replacement/insert content (required for all modes)",
+                        "description": "The replacement/insert content (not needed for LINE DELETE mode)",
                     },
                     "start_line": {
                         "type": "integer",
-                        "description": "For LINE MODE: Starting line number (1-based, inclusive)",
+                        "description": "For LINE modes: Starting line number (1-based, inclusive)",
+                    },
+                    "end_line": {
+                        "type": "integer",
+                        "description": "For LINE modes: Ending line number (1-based, inclusive)",
+                    },
+                    "delete_lines": {
+                        "type": "boolean",
+                        "description": "For LINE DELETE: Set to true to delete lines entirely (removes the lines, not just their content)",
+                        "default": False,
                     },
                     "insert_line": {
                         "type": "integer",
                         "description": "For INSERT MODE: Line number after which to insert (0 = insert at beginning)",
                     },
-                    "end_line": {
-                        "type": "integer",
-                        "description": "For LINE MODE: Ending line number (1-based, inclusive)",
-                    },
                 },
-                "required": ["file_path", "new_string"],
+                "required": ["file_path"],
             },
             handler=_make_edit_file_handler(root_dir),
         ),
