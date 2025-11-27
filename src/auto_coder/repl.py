@@ -25,12 +25,13 @@ PROMPT_STYLE = Style.from_dict({
 
 
 class ThinkingIndicator:
-    """Animated 'Thinking...' indicator."""
+    """Animated 'Thinking...' indicator using Rich Live display."""
 
     def __init__(self, console: Console):
         self.console = console
         self._task: asyncio.Task | None = None
         self._running = False
+        self._live: Live | None = None
 
     async def _animate(self) -> None:
         """Run the animation loop."""
@@ -38,23 +39,26 @@ class ThinkingIndicator:
         idx = 0
         try:
             while self._running:
-                # Clear line and print new state
-                self.console.print(f"\r[cyan]Thinking{dots[idx]}[/]   ", end="")
+                self._live.update(Text(f"Thinking{dots[idx]}", style="cyan"))
+                self._live.refresh()
                 idx = (idx + 1) % len(dots)
                 await asyncio.sleep(0.4)
         except asyncio.CancelledError:
             pass
-        finally:
-            # Clear the thinking line
-            self.console.print("\r" + " " * 20 + "\r", end="")
 
     def start(self) -> None:
         """Start the thinking animation."""
+        if self._running:
+            return  # Already running
         self._running = True
+        self._live = Live(Text("Thinking.", style="cyan"), console=self.console, refresh_per_second=10, auto_refresh=False)
+        self._live.start()
         self._task = asyncio.create_task(self._animate())
 
     async def stop(self) -> None:
         """Stop the thinking animation."""
+        if not self._running:
+            return  # Not running
         self._running = False
         if self._task:
             self._task.cancel()
@@ -63,6 +67,9 @@ class ThinkingIndicator:
             except asyncio.CancelledError:
                 pass
             self._task = None
+        if self._live:
+            self._live.stop()
+            self._live = None
 
 
 class REPL:
