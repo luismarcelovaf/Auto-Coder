@@ -51,7 +51,7 @@ class ThinkingIndicator:
         if self._running:
             return  # Already running
         self._running = True
-        self._live = Live(Text("Thinking.", style="cyan"), console=self.console, refresh_per_second=10, auto_refresh=False)
+        self._live = Live(Text("Thinking.", style="cyan"), console=self.console, refresh_per_second=10, auto_refresh=False, transient=True)
         self._live.start()
         self._task = asyncio.create_task(self._animate())
 
