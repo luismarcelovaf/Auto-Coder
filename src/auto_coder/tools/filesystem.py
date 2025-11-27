@@ -331,13 +331,15 @@ def edit_file(
 def search_files(
     pattern: str,
     dir_path: str = ".",
+    include_contents: bool = True,
     root_dir: str | None = None,
 ) -> dict[str, Any]:
-    """Search for files matching a regex pattern.
+    """Search for files by name or content matching a regex pattern.
 
     Args:
-        pattern: Regex pattern to match file paths against
+        pattern: Regex pattern to match against file names and/or contents
         dir_path: Directory to search in (defaults to current directory)
+        include_contents: Whether to also search file contents (default True)
         root_dir: Optional root directory to restrict access
 
     Returns:
@@ -358,6 +360,18 @@ def search_files(
         ".cache", ".parcel-cache",
     }
 
+    # Binary file extensions to skip for content search
+    binary_extensions = {
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp", ".svg",
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+        ".zip", ".tar", ".gz", ".rar", ".7z",
+        ".exe", ".dll", ".so", ".dylib",
+        ".pyc", ".pyo", ".class", ".o", ".obj",
+        ".woff", ".woff2", ".ttf", ".eot",
+        ".mp3", ".mp4", ".avi", ".mov", ".wav",
+        ".sqlite", ".db",
+    }
+
     try:
         path = _validate_path(dir_path, root_dir)
 
@@ -374,7 +388,7 @@ def search_files(
             return {"status": "FAILED", "error": f"Invalid regex pattern: {e}"}
 
         matches = []
-        max_matches = 100  # Limit results to avoid overwhelming output
+        max_matches = 50  # Limit results to avoid overwhelming output
 
         def scan_dir(current_path: Path, rel_prefix: str = ""):
             nonlocal matches
@@ -400,14 +414,42 @@ def search_files(
                         continue
                     scan_dir(item, rel_path)
                 else:
-                    # Check if file path matches regex
+                    match_type = None
+                    matching_lines = []
+
+                    # Check if file name/path matches regex
                     if regex.search(rel_path) or regex.search(item.name):
-                        matches.append({
+                        match_type = "filename"
+
+                    # Check file contents if enabled and not a binary file
+                    if include_contents and item.suffix.lower() not in binary_extensions:
+                        try:
+                            content = item.read_text(encoding="utf-8", errors="ignore")
+                            lines = content.split("\n")
+                            for i, line in enumerate(lines, 1):
+                                if regex.search(line):
+                                    matching_lines.append({
+                                        "line": i,
+                                        "text": line.strip()[:100]  # Truncate long lines
+                                    })
+                                    if len(matching_lines) >= 5:  # Limit matches per file
+                                        break
+                            if matching_lines:
+                                match_type = "content" if match_type is None else "both"
+                        except (PermissionError, OSError):
+                            pass
+
+                    if match_type:
+                        match_entry = {
                             "path": str(item),
                             "relative_path": rel_path,
                             "name": item.name,
                             "size": _format_size(item.stat().st_size),
-                        })
+                            "match_type": match_type,
+                        }
+                        if matching_lines:
+                            match_entry["matching_lines"] = matching_lines
+                        matches.append(match_entry)
 
         scan_dir(path)
 
@@ -418,7 +460,7 @@ def search_files(
             "matches": matches,
             "count": len(matches),
             "truncated": truncated,
-            "message": f"Found {len(matches)} files matching '{pattern}'" + (" (truncated)" if truncated else ""),
+            "message": f"Found {len(matches)} matches for '{pattern}'" + (" (truncated)" if truncated else ""),
         }
 
     except PermissionError as e:
@@ -636,8 +678,8 @@ def _make_delete_file_handler(root_dir: str | None):
 
 def _make_search_files_handler(root_dir: str | None):
     """Create a handler for search_files that ignores extra kwargs."""
-    def handler(pattern: str, dir_path: str = ".", **kwargs) -> dict[str, Any]:
-        return search_files(pattern, dir_path, root_dir)
+    def handler(pattern: str, dir_path: str = ".", include_contents: bool = True, **kwargs) -> dict[str, Any]:
+        return search_files(pattern, dir_path, include_contents, root_dir)
     return handler
 
 
@@ -786,21 +828,27 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
         ToolDefinition(
             name="search_files",
             description=(
-                "Search for files matching a regex pattern. Use this to find files when you don't know "
-                r"the exact path. Returns matching file paths. Examples: '.*\.py$' for Python files, "
-                "'test.*' for test files, 'config' for any file with 'config' in the name."
+                "Search for files by name OR content matching a regex pattern. "
+                "Searches both file names and file contents by default. "
+                r"Examples: 'def my_function' to find where a function is defined, "
+                r"'\.py$' for Python files, 'TODO' to find TODO comments."
             ),
             parameters={
                 "type": "object",
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Regex pattern to match against file paths (case-insensitive)",
+                        "description": "Regex pattern to match against file names and contents (case-insensitive)",
                     },
                     "dir_path": {
                         "type": "string",
                         "description": "Directory to search in (defaults to current directory)",
                         "default": ".",
+                    },
+                    "include_contents": {
+                        "type": "boolean",
+                        "description": "Search file contents too, not just names (default true)",
+                        "default": True,
                     },
                 },
                 "required": ["pattern"],
