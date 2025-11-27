@@ -57,7 +57,7 @@ RIGHT: [Call run_command with "npm install"] -> "Dependencies installed."
 
 ### Workflow Example:
 User: "Fix the bug in auth.py"
-1. Call search_files with "auth\.py" (NO text) -> find the file path
+1. Call search_files with "auth.py" (NO text) -> find the file path
 2. Call read_file (NO text) -> wait for result
 3. Call edit_file (NO text) -> wait for result
 4. Call read_file to verify (NO text) -> wait for result
