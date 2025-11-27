@@ -202,6 +202,21 @@ class OpenAICompatibleProvider(LLMProvider):
         # Always use streaming
         return self._stream_response(client, payload)
 
+    def _debug_response(self, content: str | None, tool_calls: list[ToolCall] | None, finish_reason: str | None) -> None:
+        """Print debug info for response chunks."""
+        if not DEBUG:
+            return
+        parts = []
+        if content:
+            preview = content[:50].replace('\n', '\\n')
+            parts.append(f"content=\"{preview}{'...' if len(content) > 50 else ''}\"")
+        if tool_calls:
+            parts.append(f"tools={[tc.name for tc in tool_calls]}")
+        if finish_reason:
+            parts.append(f"finish={finish_reason}")
+        if parts:
+            print(f"  [RECV] {', '.join(parts)}")
+
     async def _stream_response(
         self, client: httpx.AsyncClient, payload: dict
     ) -> AsyncIterator[StreamChunk]:
@@ -278,6 +293,8 @@ class OpenAICompatibleProvider(LLMProvider):
                             )
                         )
                     tool_calls = parsed_calls
+
+                self._debug_response(content, tool_calls, finish_reason)
 
                 yield StreamChunk(
                     content=content,
