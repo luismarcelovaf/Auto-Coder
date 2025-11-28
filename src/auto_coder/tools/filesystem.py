@@ -45,7 +45,7 @@ def _validate_path(path: str, root_dir: str | None = None, operation: str = "acc
                 f"Path: {path}\n"
                 f"Resolved: {resolved}\n"
                 f"Working directory: {root_dir}\n\n"
-                f"Allow this operation? (y/n)"
+                f"Allow this operation?"
             )
             confirmed, error = confirm_dangerous_operation(prompt, auto_deny=True)
 

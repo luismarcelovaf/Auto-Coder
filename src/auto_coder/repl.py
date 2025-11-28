@@ -30,13 +30,13 @@ def create_key_bindings() -> KeyBindings:
     """Create custom key bindings for the REPL.
 
     - Enter: Submit the input
-    - Alt+Enter: Insert newline for multiline input
+    - Ctrl+J: Insert newline for multiline input
     """
     kb = KeyBindings()
 
-    @kb.add("escape", "enter")
+    @kb.add("c-j")
     def _(event):
-        """Insert a newline on Alt+Enter."""
+        """Insert a newline on Ctrl+J."""
         event.current_buffer.insert_text("\n")
 
     return kb
@@ -141,7 +141,7 @@ class REPL:
 
         while True:
             try:
-                response = input("[y/N] > ").strip().lower()
+                response = input("[y/n] > ").strip().lower()
                 if response in ("y", "yes"):
                     self.console.print("[yellow]Command approved by user.[/]")
                     return True
@@ -350,7 +350,7 @@ class REPL:
 # Keyboard Shortcuts
 
 - **Enter** - Submit your input
-- **Alt+Enter** - Insert a new line (for multiline input)
+- **Ctrl+J** - Insert a new line (for multiline input)
 - **ESC** - Cancel the current LLM request (during processing)
 
 # Available Tools
@@ -432,7 +432,7 @@ The correlation ID resets when you use /clear or /reset.
                 "[bold]Welcome to Auto-Coder![/]\n\n"
                 "Type your requests and I'll help you with coding tasks.\n"
                 "Type [cyan]/help[/] for available commands.\n\n"
-                "[dim]Enter to submit, Alt+Enter for new line[/]\n"
+                "[dim]Enter to submit, Ctrl+J for new line[/]\n"
                 "[dim]Press ESC during a request to cancel[/]\n\n"
                 f"{project_status}\n"
                 f"[dim]Correlation ID: {correlation_id}[/]",
