@@ -6,6 +6,8 @@ import sys
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.keys import Keys
 from prompt_toolkit.styles import Style
 from rich.console import Console
 from rich.live import Live
@@ -16,12 +18,30 @@ from rich.text import Text
 
 from .agent import Agent
 from .providers.base import ToolCall
+from .tools.safety import set_confirmation_callback
 
 
 # Custom style for the prompt
 PROMPT_STYLE = Style.from_dict({
     "prompt": "#00aa00 bold",
 })
+
+
+def create_key_bindings() -> KeyBindings:
+    """Create custom key bindings for the REPL.
+
+    - Shift+Enter or Ctrl+Enter: Insert newline (for multiline input)
+    - Enter: Submit the input
+    """
+    kb = KeyBindings()
+
+    @kb.add(Keys.ShiftEnter)
+    @kb.add(Keys.ControlEnter)
+    def _(event):
+        """Insert a newline character for multiline input."""
+        event.current_buffer.insert_text("\n")
+
+    return kb
 
 
 class ThinkingIndicator:
@@ -83,6 +103,42 @@ class REPL:
         self.agent = agent
         self.console = Console()
         self.history_file = history_file
+        self._cancel_requested = False
+        self._current_task: asyncio.Task | None = None
+
+        # Set up confirmation callback for dangerous commands
+        set_confirmation_callback(self._confirm_dangerous_command)
+
+    def _confirm_dangerous_command(self, prompt: str) -> bool:
+        """Ask user to confirm a dangerous command.
+
+        Args:
+            prompt: The confirmation prompt to display
+
+        Returns:
+            True if user confirms, False otherwise
+        """
+        self.console.print()
+        self.console.print(Panel(
+            prompt,
+            title="[bold red]Confirmation Required[/]",
+            border_style="red",
+        ))
+
+        while True:
+            try:
+                response = input("[y/N] > ").strip().lower()
+                if response in ("y", "yes"):
+                    self.console.print("[yellow]Command approved by user.[/]")
+                    return True
+                elif response in ("n", "no", ""):
+                    self.console.print("[green]Command denied by user.[/]")
+                    return False
+                else:
+                    self.console.print("[dim]Please enter 'y' or 'n'[/]")
+            except (EOFError, KeyboardInterrupt):
+                self.console.print("\n[green]Command denied.[/]")
+                return False
 
     def _format_tool_call(self, tool_call: ToolCall) -> Panel:
         """Format a tool call for display."""
@@ -226,9 +282,14 @@ class REPL:
 
         # Start thinking indicator
         self._thinking.start()
+        self._cancel_requested = False
 
         try:
             async for chunk in self.agent.run(user_input):
+                # Check if cancellation was requested
+                if self._cancel_requested:
+                    raise asyncio.CancelledError()
+
                 # Stop thinking indicator on first chunk of each LLM response
                 await self._thinking.stop()
 
@@ -248,6 +309,9 @@ class REPL:
                     self._live_display.update(Text(self._current_response))
                     self._live_display.refresh()
 
+        except asyncio.CancelledError:
+            self.console.print("\n[yellow]Request cancelled.[/]")
+
         finally:
             # Ensure thinking indicator is stopped
             await self._thinking.stop()
@@ -255,6 +319,7 @@ class REPL:
             if self._live_display:
                 self._live_display.stop()
                 self._live_display = None
+            self._cancel_requested = False
 
         self.console.print()  # Blank line after response
 
@@ -267,6 +332,12 @@ class REPL:
 - **/clear** or **/reset** - Clear conversation history and reset correlation ID
 - **/id** - Show current correlation ID
 - **/quit** or **/exit** - Exit the REPL
+
+# Keyboard Shortcuts
+
+- **Enter** - Submit your input
+- **Shift+Enter** or **Ctrl+Enter** - Insert a new line (for multiline input)
+- **ESC** - Cancel the current LLM request (during processing)
 
 # Available Tools
 
@@ -289,13 +360,52 @@ The correlation ID resets when you use /clear or /reset.
 """
         self.console.print(Markdown(help_text))
 
+    def _listen_for_escape(self) -> None:
+        """Listen for ESC key press to cancel the current request.
+
+        This runs in a separate thread during LLM requests.
+        """
+        try:
+            if sys.platform == "win32":
+                import msvcrt
+                while self._current_task and not self._current_task.done():
+                    if msvcrt.kbhit():
+                        key = msvcrt.getch()
+                        if key == b'\x1b':  # ESC key
+                            self._cancel_requested = True
+                            return
+                    import time
+                    time.sleep(0.05)
+            else:
+                import select
+                import termios
+                import tty
+
+                fd = sys.stdin.fileno()
+                old_settings = termios.tcgetattr(fd)
+                try:
+                    tty.setcbreak(fd)
+                    while self._current_task and not self._current_task.done():
+                        if select.select([sys.stdin], [], [], 0.05)[0]:
+                            key = sys.stdin.read(1)
+                            if key == '\x1b':  # ESC key
+                                self._cancel_requested = True
+                                return
+                finally:
+                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        except Exception:
+            pass  # Ignore errors in key listening
+
     async def run(self) -> None:
         """Run the interactive REPL."""
-        # Set up prompt with history
+        # Set up prompt with history and custom key bindings
         history = FileHistory(self.history_file) if self.history_file else None
+        kb = create_key_bindings()
         session: PromptSession = PromptSession(
             history=history,
             style=PROMPT_STYLE,
+            key_bindings=kb,
+            multiline=True,
         )
 
         # Print welcome message with correlation ID
@@ -309,6 +419,8 @@ The correlation ID resets when you use /clear or /reset.
                 "[bold]Welcome to Auto-Coder![/]\n\n"
                 "Type your requests and I'll help you with coding tasks.\n"
                 "Type [cyan]/help[/] for available commands.\n\n"
+                "[dim]Shift+Enter or Ctrl+Enter for new line, Enter to submit[/]\n"
+                "[dim]Press ESC during a request to cancel[/]\n\n"
                 f"{project_status}\n"
                 f"[dim]Correlation ID: {correlation_id}[/]",
                 border_style="blue",
@@ -323,11 +435,22 @@ The correlation ID resets when you use /clear or /reset.
                         None,
                         lambda: session.prompt(
                             [("class:prompt", ">>> ")],
-                            multiline=False,
                         ),
                     )
 
-                    await self._process_input(user_input)
+                    # Create task for processing and start ESC listener
+                    self._current_task = asyncio.create_task(self._process_input(user_input))
+
+                    # Run ESC listener in background thread
+                    loop = asyncio.get_event_loop()
+                    listener_future = loop.run_in_executor(None, self._listen_for_escape)
+
+                    try:
+                        await self._current_task
+                    finally:
+                        self._current_task = None
+                        # Cancel the listener
+                        listener_future.cancel()
 
                 except KeyboardInterrupt:
                     self.console.print("\n[dim]Goodbye![/]")

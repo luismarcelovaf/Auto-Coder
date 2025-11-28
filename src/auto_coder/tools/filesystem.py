@@ -5,30 +5,54 @@ from pathlib import Path
 from typing import Any
 
 from ..providers.base import ToolDefinition
+from .safety import (
+    check_path_safety,
+    confirm_dangerous_operation,
+)
 
 
-def _validate_path(path: str, root_dir: str | None = None) -> Path:
-    """Validate and resolve a file path.
+class OutsideWorkingDirectoryError(Exception):
+    """Raised when an operation targets a path outside the working directory and is denied."""
+    pass
+
+
+def _validate_path(path: str, root_dir: str | None = None, operation: str = "access") -> Path:
+    """Validate and resolve a file path, with confirmation for paths outside working directory.
 
     Args:
         path: The path to validate
-        root_dir: Optional root directory to restrict access to
+        root_dir: Optional root directory to check access against
+        operation: Description of the operation (e.g., "read", "write", "delete")
 
     Returns:
         Resolved Path object
 
     Raises:
-        PermissionError: If path is outside root_dir
-        FileNotFoundError: If path doesn't exist (for read operations)
+        OutsideWorkingDirectoryError: If path is outside root_dir and user denies access
+        PermissionError: If path access is denied for other reasons
     """
     resolved = Path(path).resolve()
 
     if root_dir:
-        root = Path(root_dir).resolve()
-        try:
-            resolved.relative_to(root)
-        except ValueError:
-            raise PermissionError(f"Access denied: {path} is outside allowed directory")
+        # Check if path is outside the working directory
+        is_dangerous, description = check_path_safety(path, root_dir, operation)
+
+        if is_dangerous:
+            # Ask for confirmation
+            prompt = (
+                f"⚠️  OUTSIDE WORKING DIRECTORY ⚠️\n\n"
+                f"Operation: {operation}\n"
+                f"Path: {path}\n"
+                f"Resolved: {resolved}\n"
+                f"Working directory: {root_dir}\n\n"
+                f"Allow this operation?"
+            )
+            confirmed, error = confirm_dangerous_operation(prompt, auto_deny=True)
+
+            if not confirmed:
+                raise OutsideWorkingDirectoryError(
+                    f"Access denied: {path} is outside working directory. {error or ''}"
+                )
 
     return resolved
 
@@ -51,7 +75,7 @@ def read_file(
         Dict with 'content' or 'error' key
     """
     try:
-        path = _validate_path(file_path, root_dir)
+        path = _validate_path(file_path, root_dir, operation="read")
 
         if not path.exists():
             return {"status": "FAILED", "error": f"File not found: {file_path}"}
@@ -97,6 +121,8 @@ def read_file(
             result["lines"] = total_lines
 
         return result
+    except OutsideWorkingDirectoryError as e:
+        return {"status": "DENIED", "error": str(e)}
     except PermissionError as e:
         return {"status": "FAILED", "error": str(e)}
     except UnicodeDecodeError:
@@ -119,7 +145,7 @@ def write_file(
         Dict with 'status', 'success'/'error', and details
     """
     try:
-        path = _validate_path(file_path, root_dir)
+        path = _validate_path(file_path, root_dir, operation="write")
 
         # Create parent directories if needed
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -135,6 +161,8 @@ def write_file(
             "bytes_written": len(content.encode("utf-8")),
             "lines_written": line_count,
         }
+    except OutsideWorkingDirectoryError as e:
+        return {"status": "DENIED", "error": str(e)}
     except PermissionError as e:
         return {"status": "FAILED", "error": str(e)}
     except Exception as e:
@@ -173,7 +201,7 @@ def edit_file(
         Dict with 'success' and 'message' or 'error' and 'status' keys
     """
     try:
-        path = _validate_path(file_path, root_dir)
+        path = _validate_path(file_path, root_dir, operation="edit")
 
         if not path.exists():
             return {
@@ -338,6 +366,8 @@ def edit_file(
                 "error": "Must provide either old_string (for string replacement) or start_line+end_line (for line replacement)"
             }
 
+    except OutsideWorkingDirectoryError as e:
+        return {"status": "DENIED", "error": str(e)}
     except PermissionError as e:
         return {"status": "FAILED", "error": str(e)}
     except UnicodeDecodeError:
@@ -391,7 +421,7 @@ def search_files(
     }
 
     try:
-        path = _validate_path(dir_path, root_dir)
+        path = _validate_path(dir_path, root_dir, operation="search")
 
         if not path.exists():
             return {"status": "FAILED", "error": f"Directory not found: {dir_path}"}
@@ -481,6 +511,8 @@ def search_files(
             "message": f"Found {len(matches)} matches for '{pattern}'" + (" (truncated)" if truncated else ""),
         }
 
+    except OutsideWorkingDirectoryError as e:
+        return {"status": "DENIED", "error": str(e)}
     except PermissionError as e:
         return {"status": "FAILED", "error": str(e)}
     except Exception as e:
@@ -501,7 +533,7 @@ def delete_file(
         Dict with 'status' and 'message' or 'error'
     """
     try:
-        path = _validate_path(file_path, root_dir)
+        path = _validate_path(file_path, root_dir, operation="delete")
 
         if not path.exists():
             return {"status": "FAILED", "error": f"File not found: {file_path}"}
@@ -521,6 +553,8 @@ def delete_file(
             "message": f"Successfully deleted file: {file_name} ({_format_size(file_size)})",
             "path": str(path),
         }
+    except OutsideWorkingDirectoryError as e:
+        return {"status": "DENIED", "error": str(e)}
     except PermissionError as e:
         return {"status": "FAILED", "error": f"Permission denied: {e}"}
     except Exception as e:
@@ -570,7 +604,7 @@ def list_directory(
     }
 
     try:
-        path = _validate_path(dir_path, root_dir)
+        path = _validate_path(dir_path, root_dir, operation="list")
 
         if not path.exists():
             return {"status": "FAILED", "error": f"Directory not found: {dir_path}"}
@@ -645,6 +679,8 @@ def list_directory(
             "total_files": total_files,
             "total_dirs": total_dirs,
         }
+    except OutsideWorkingDirectoryError as e:
+        return {"status": "DENIED", "error": str(e)}
     except PermissionError as e:
         return {"status": "FAILED", "error": str(e)}
     except Exception as e:
