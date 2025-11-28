@@ -202,22 +202,54 @@ class OpenAICompatibleProvider(LLMProvider):
         # Always use streaming
         return self._stream_response(client, payload)
 
+    def _init_debug_buffer(self) -> None:
+        """Initialize debug buffer for batched output."""
+        self._debug_content_buffer = ""
+        self._debug_reasoning_buffer = ""
+        self._debug_last_print = 0.0
+
     def _debug_response(self, content: str | None, tool_calls: list[ToolCall] | None, finish_reason: str | None, reasoning: str | None = None) -> None:
-        """Print debug info for response chunks."""
+        """Print debug info for response chunks, batched every 2 seconds."""
         if not DEBUG:
             return
-        parts = []
+
+        import time
+
+        # Initialize buffers if needed
+        if not hasattr(self, '_debug_content_buffer'):
+            self._init_debug_buffer()
+
+        # Accumulate content and reasoning
         if reasoning:
-            print(f"  [REASONING] {reasoning}")
+            self._debug_reasoning_buffer += reasoning
         if content:
-            preview = content[:50].replace('\n', '\\n')
-            parts.append(f"content=\"{preview}{'...' if len(content) > 50 else ''}\"")
-        if tool_calls:
-            parts.append(f"tools={[tc.name for tc in tool_calls]}")
-        if finish_reason:
-            parts.append(f"finish={finish_reason}")
-        if parts:
-            print(f"  [RECV] {', '.join(parts)}")
+            self._debug_content_buffer += content
+
+        current_time = time.time()
+        should_print = (
+            finish_reason is not None or  # Always print on finish
+            tool_calls is not None or  # Always print tool calls immediately
+            (current_time - self._debug_last_print) >= 2.0  # Print every 2 seconds
+        )
+
+        if should_print:
+            if self._debug_reasoning_buffer:
+                print(f"  [REASONING] {self._debug_reasoning_buffer}")
+                self._debug_reasoning_buffer = ""
+
+            parts = []
+            if self._debug_content_buffer:
+                preview = self._debug_content_buffer.replace('\n', '\\n')
+                parts.append(f"content=\"{preview}\"")
+                self._debug_content_buffer = ""
+            if tool_calls:
+                parts.append(f"tools={[tc.name for tc in tool_calls]}")
+            if finish_reason:
+                parts.append(f"finish={finish_reason}")
+            if parts:
+                print(f"  [RECV] {', '.join(parts)}")
+
+            self._debug_last_print = current_time
 
     async def _stream_response(
         self, client: httpx.AsyncClient, payload: dict
