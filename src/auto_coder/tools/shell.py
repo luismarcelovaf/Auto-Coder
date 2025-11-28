@@ -189,7 +189,7 @@ async def run_command(
         is_dangerous, danger_description = check_dangerous_command(command, cwd)
         if is_dangerous:
             # Ask for confirmation using shared utility
-            prompt = f"⚠️  DANGEROUS COMMAND DETECTED ⚠️\n\nCommand: {command}\nReason: {danger_description}\n\nExecute this command?"
+            prompt = f"⚠️  DANGEROUS COMMAND DETECTED ⚠️\n\nCommand: {command}\nReason: {danger_description}\n\nExecute this command? (y/n)"
             confirmed, error = confirm_dangerous_operation(prompt, auto_deny=True)
 
             if not confirmed:

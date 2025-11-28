@@ -116,6 +116,22 @@ class REPL:
         Returns:
             True if user confirms, False otherwise
         """
+        # Stop the thinking indicator if it's running
+        if hasattr(self, '_thinking') and self._thinking:
+            # We need to stop it synchronously, so we run the coroutine
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Create a new task to stop it
+                    asyncio.ensure_future(self._thinking.stop())
+                    # Give it a moment to stop
+                    import time
+                    time.sleep(0.1)
+                else:
+                    loop.run_until_complete(self._thinking.stop())
+            except Exception:
+                pass
+
         self.console.print()
         self.console.print(Panel(
             prompt,
