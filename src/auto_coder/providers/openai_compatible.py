@@ -202,11 +202,13 @@ class OpenAICompatibleProvider(LLMProvider):
         # Always use streaming
         return self._stream_response(client, payload)
 
-    def _debug_response(self, content: str | None, tool_calls: list[ToolCall] | None, finish_reason: str | None) -> None:
+    def _debug_response(self, content: str | None, tool_calls: list[ToolCall] | None, finish_reason: str | None, reasoning: str | None = None) -> None:
         """Print debug info for response chunks."""
         if not DEBUG:
             return
         parts = []
+        if reasoning:
+            print(f"  [REASONING] {reasoning}")
         if content:
             preview = content[:50].replace('\n', '\\n')
             parts.append(f"content=\"{preview}{'...' if len(content) > 50 else ''}\"")
@@ -256,6 +258,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 finish_reason = choice.get("finish_reason")
 
                 content = delta.get("content")
+                reasoning_content = delta.get("reasoning_content")
 
                 # Handle streaming tool calls
                 tool_calls = None
@@ -294,7 +297,7 @@ class OpenAICompatibleProvider(LLMProvider):
                         )
                     tool_calls = parsed_calls
 
-                self._debug_response(content, tool_calls, finish_reason)
+                self._debug_response(content, tool_calls, finish_reason, reasoning_content)
 
                 yield StreamChunk(
                     content=content,
