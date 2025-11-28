@@ -7,7 +7,6 @@ import sys
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.keys import Keys
 from prompt_toolkit.styles import Style
 from rich.console import Console
 from rich.live import Live
@@ -30,15 +29,14 @@ PROMPT_STYLE = Style.from_dict({
 def create_key_bindings() -> KeyBindings:
     """Create custom key bindings for the REPL.
 
-    - Shift+Enter or Ctrl+Enter: Insert newline (for multiline input)
     - Enter: Submit the input
+    - Alt+Enter: Insert newline for multiline input
     """
     kb = KeyBindings()
 
-    @kb.add(Keys.ShiftEnter)
-    @kb.add(Keys.ControlEnter)
+    @kb.add("escape", "enter")
     def _(event):
-        """Insert a newline character for multiline input."""
+        """Insert a newline on Alt+Enter."""
         event.current_buffer.insert_text("\n")
 
     return kb
@@ -336,7 +334,7 @@ class REPL:
 # Keyboard Shortcuts
 
 - **Enter** - Submit your input
-- **Shift+Enter** or **Ctrl+Enter** - Insert a new line (for multiline input)
+- **Alt+Enter** - Insert a new line (for multiline input)
 - **ESC** - Cancel the current LLM request (during processing)
 
 # Available Tools
@@ -405,7 +403,6 @@ The correlation ID resets when you use /clear or /reset.
             history=history,
             style=PROMPT_STYLE,
             key_bindings=kb,
-            multiline=True,
         )
 
         # Print welcome message with correlation ID
@@ -419,7 +416,7 @@ The correlation ID resets when you use /clear or /reset.
                 "[bold]Welcome to Auto-Coder![/]\n\n"
                 "Type your requests and I'll help you with coding tasks.\n"
                 "Type [cyan]/help[/] for available commands.\n\n"
-                "[dim]Shift+Enter or Ctrl+Enter for new line, Enter to submit[/]\n"
+                "[dim]Enter to submit, Alt+Enter for new line[/]\n"
                 "[dim]Press ESC during a request to cancel[/]\n\n"
                 f"{project_status}\n"
                 f"[dim]Correlation ID: {correlation_id}[/]",
