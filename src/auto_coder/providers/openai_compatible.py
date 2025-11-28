@@ -155,18 +155,10 @@ class OpenAICompatibleProvider(LLMProvider):
 
         formatted_messages = [self._message_to_dict(m) for m in messages]
 
-        # Build tools description to embed in system message
-        tools_description = ""
-        if tools:
-            tools_description = "\n\n## TOOL DEFINITIONS (use these exact names and parameters):\n\n"
-            for t in tools:
-                tools_description += f"### {t.name}\n"
-                tools_description += f"{t.description}\n"
-                tools_description += f"Parameters: {json.dumps(t.parameters, indent=2)}\n\n"
-
-        # Inject tools into the system message so it comes AFTER our "IGNORE PREVIOUS" instruction
-        if formatted_messages and formatted_messages[0].get("role") == "system" and tools_description:
-            formatted_messages[0]["content"] = formatted_messages[0].get("content", "") + tools_description
+        # NOTE: We intentionally do NOT embed tool definitions in the system message.
+        # Doing so confuses some models (like gpt-oss-120b) into "simulating" tool calls
+        # in their reasoning instead of using the proper API function calling mechanism.
+        # Tools are ONLY sent via the API's native "tools" field.
 
         payload: dict[str, Any] = {
             "model": self.model,
