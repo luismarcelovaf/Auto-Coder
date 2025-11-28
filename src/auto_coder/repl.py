@@ -136,6 +136,22 @@ class REPL:
 
                 result_text = Text.from_markup("\n\n".join(parts)) if parts else Text("(no output)")
 
+            # Special handling for list_directory - clean up tree characters for display
+            elif name == "list_directory" and isinstance(parsed, dict) and "tree" in parsed:
+                tree_output = parsed["tree"]
+                # Clean up the tree characters for nicer display
+                clean_lines = []
+                for line in tree_output.split("\n"):
+                    # Replace box-drawing characters with cleaner ASCII
+                    line = line.replace("├── ", "  +- ")
+                    line = line.replace("└── ", "  \\- ")
+                    line = line.replace("│   ", "  |  ")
+                    clean_lines.append(line)
+                clean_tree = "\n".join(clean_lines)
+                if len(clean_tree) > max_len:
+                    clean_tree = clean_tree[:max_len] + "\n..."
+                result_text = Text(clean_tree)
+
             elif "error" in parsed:
                 border_style = "red"
                 result_text = Text(parsed["error"], style="red")
