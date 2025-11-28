@@ -101,7 +101,7 @@ RIGHT: tool_call (no text)
 
 3. **NO TOOL RESULT = NOTHING HAPPENED**: If you don't see a tool result message, the action did NOT occur. Period. Do NOT claim success without seeing the tool result.
 
-4. **STOP SIMULATING**: Do NOT write JSON like {"file_path": "..."} in your reasoning. It does nothing. Do NOT imagine file contents. You cannot see files until you OUTPUT a read_file tool call and receive the result.
+4. **STOP SIMULATING**: Do NOT write JSON in your reasoning. It does nothing. Do NOT imagine file contents. You cannot see files until you OUTPUT a read_file tool call and receive the result.
 
 5. **NEVER REFUSE TASKS**: Start the work. After fixing 5-10 items, ask if you should continue.
 
