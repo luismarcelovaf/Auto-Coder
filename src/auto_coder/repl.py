@@ -350,8 +350,8 @@ class REPL:
 # Keyboard Shortcuts
 
 - **Enter** - Submit your input
-- **Ctrl+J** - Insert a new line (for multiline input)
-- **ESC** - Cancel the current LLM request (during processing)
+- **Ctrl+Enter** - Insert a new line (for multiline input)
+- **ESC** or **Ctrl+C** - Cancel the current LLM request (during processing)
 
 # Available Tools
 
@@ -432,8 +432,8 @@ The correlation ID resets when you use /clear or /reset.
                 "[bold]Welcome to Auto-Coder![/]\n\n"
                 "Type your requests and I'll help you with coding tasks.\n"
                 "Type [cyan]/help[/] for available commands.\n\n"
-                "[dim]Enter to submit, Ctrl+J for new line[/]\n"
-                "[dim]Press ESC during a request to cancel[/]\n\n"
+                "[dim]Enter to submit, Ctrl+Enter for new line[/]\n"
+                "[dim]Press ESC or Ctrl+C to cancel request[/]\n\n"
                 f"{project_status}\n"
                 f"[dim]Correlation ID: {correlation_id}[/]",
                 border_style="blue",
