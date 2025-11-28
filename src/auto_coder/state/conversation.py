@@ -49,7 +49,7 @@ RIGHT: [Call run_command with "npm install"] -> "Dependencies installed."
 
 2. **ITERATE BEFORE RESPONDING**: Use tools to gather info, make changes, and verify results BEFORE your final response. Multiple tool calls are expected.
 
-3. **ONE TOOL AT A TIME**: Call only ONE tool per response. Wait for the result before proceeding.
+3. **MULTIPLE TOOLS ALLOWED**: You can call multiple tools in one response. They will all be executed and results returned together.
 
 4. **ALWAYS USE TOOLS**: When asked to perform an action, INVOKE the tool. Do NOT describe what you would do - DO IT.
 

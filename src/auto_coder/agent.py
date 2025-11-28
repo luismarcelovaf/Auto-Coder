@@ -32,8 +32,8 @@ class Agent:
 
         This handles the full agentic loop:
         1. Send user message to LLM
-        2. If LLM requests a tool call, execute it (ONE at a time)
-        3. Send tool result back to LLM (new API request)
+        2. If LLM requests tool calls, execute ALL of them
+        3. Send tool results back to LLM (new API request)
         4. Repeat until LLM gives final response (no tool calls)
 
         Args:
@@ -73,26 +73,25 @@ class Agent:
                     self.conversation.add_assistant_message(content=response_content)
                 break
 
-            # Tool call detected - DISCARD any text response (it's premature reasoning)
-            # Only add the tool call to conversation, no content
-            tool_call = tool_calls[0]
-
+            # Tool calls detected - DISCARD any text response (it's premature reasoning)
+            # Add assistant message with ALL tool calls
             self.conversation.add_assistant_message(
                 content=None,  # Discard text when there's a tool call
-                tool_calls=[tool_call],
+                tool_calls=tool_calls,
             )
 
-            # Execute the tool
-            if self.on_tool_start:
-                self.on_tool_start(tool_call)
+            # Execute ALL tool calls and collect results
+            for tool_call in tool_calls:
+                if self.on_tool_start:
+                    self.on_tool_start(tool_call)
 
-            result = await self.tools.execute_async(tool_call)
-            self.conversation.add_tool_result(result)
+                result = await self.tools.execute_async(tool_call)
+                self.conversation.add_tool_result(result)
 
-            if self.on_tool_end:
-                self.on_tool_end(tool_call.name, result.content)
+                if self.on_tool_end:
+                    self.on_tool_end(tool_call.name, result.content)
 
-            # Loop continues - will make a new API request with the tool result
+            # Loop continues - will make a new API request with all tool results
 
         if iteration >= self.max_tool_iterations:
             yield "\n\n[Reached maximum tool iterations]"
