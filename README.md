@@ -1,4 +1,4 @@
-# Auto-Coder
+# Code-Crafter
 
 A CLI tool for interacting with LLMs to assist with coding tasks. Works with any OpenAI-compatible API endpoint.
 
@@ -14,23 +14,23 @@ pip install -e .
 
 1. Install and run [Ollama](https://ollama.ai)
 2. Pull a model: `ollama pull llama3.2`
-3. Run auto-coder:
+3. Run code-crafter:
 
 ```bash
-auto-coder
+code-crafter
 ```
 
 ### With OpenAI
 
 ```bash
 export OPENAI_API_KEY="your-key"
-auto-coder --base-url https://api.openai.com/v1 --model gpt-4
+code-crafter --base-url https://api.openai.com/v1 --model gpt-4
 ```
 
 ### With Custom API
 
 ```bash
-auto-coder --base-url https://your-api.com/v1 --api-key your-key --model your-model
+code-crafter --base-url https://your-api.com/v1 --api-key your-key --model your-model
 ```
 
 ### With SSO Authentication
@@ -38,7 +38,7 @@ auto-coder --base-url https://your-api.com/v1 --api-key your-key --model your-mo
 ```bash
 export USE_SSO=true
 export SSO_TOKEN="your-sso-token"  # Or implement token acquisition in auth.py
-auto-coder --base-url https://your-api.com/v1 --model your-model
+code-crafter --base-url https://your-api.com/v1 --model your-model
 ```
 
 ## Usage
@@ -46,7 +46,7 @@ auto-coder --base-url https://your-api.com/v1 --model your-model
 ### Interactive Mode
 
 ```bash
-auto-coder
+code-crafter
 ```
 
 This starts an interactive REPL where you can chat with the assistant.
@@ -54,7 +54,7 @@ This starts an interactive REPL where you can chat with the assistant.
 ### Single Prompt Mode
 
 ```bash
-auto-coder "Read the main.py file and explain what it does"
+code-crafter "Read the main.py file and explain what it does"
 ```
 
 ### Command-Line Options
@@ -69,7 +69,7 @@ auto-coder "Read the main.py file and explain what it does"
 
 ## Configuration
 
-Create a config file at `~/.auto-coder.yaml` or `./.auto-coder.yaml`:
+Create a config file at `~/.code-crafter.yaml` or `./.code-crafter.yaml`:
 
 ```yaml
 llm:
@@ -84,9 +84,9 @@ llm:
 
 ### Environment Variables
 
-- `AUTO_CODER_BASE_URL` - Override base URL
-- `AUTO_CODER_MODEL` - Override model
-- `AUTO_CODER_API_KEY` - Override API key
+- `CODE_CRAFTER_BASE_URL` - Override base URL
+- `CODE_CRAFTER_MODEL` - Override model
+- `CODE_CRAFTER_API_KEY` - Override API key
 - `OPENAI_API_KEY` - Fallback API key
 - `USE_SSO` - Set to "true" to enable SSO authentication (uses bearer token)
 - `SERVER_SIDE_TOKEN_REFRESH` - Set to "true" to use basic credentials for server-side token refresh
@@ -97,7 +97,7 @@ llm:
 
 The simplest method - provide an API key via:
 - `--api-key` command line argument
-- `AUTO_CODER_API_KEY` environment variable
+- `CODE_CRAFTER_API_KEY` environment variable
 - `api_key` in config file
 
 ### SSO Authentication
@@ -114,7 +114,7 @@ When neither `USE_SSO` nor `SERVER_SIDE_TOKEN_REFRESH` is enabled, the tool uses
 
 ### Authentication Provider
 
-Create `src/auto_coder/authentication_provider.py` with your authentication logic:
+Create `src/code_crafter/authentication_provider.py` with your authentication logic:
 
 ```python
 import httpx
@@ -156,7 +156,7 @@ llm:
 
 ### Certificate Management
 
-The tool uses `certifi` for SSL certificate verification. To update or customize certificates, implement the `update_certifi()` function in `src/auto_coder/auth.py`.
+The tool uses `certifi` for SSL certificate verification. To update or customize certificates, implement the `update_certifi()` function in `src/code_crafter/auth.py`.
 
 ## Correlation ID
 
@@ -186,7 +186,7 @@ The assistant can use these tools:
 ## Architecture
 
 ```
-src/auto_coder/
+src/code_crafter/
 ├── cli.py              # CLI entry point
 ├── agent.py            # Core agent loop
 ├── auth.py             # Authentication (SSO, certificates)
@@ -208,8 +208,8 @@ src/auto_coder/
 ### Adding Custom Tools
 
 ```python
-from auto_coder.providers.base import ToolDefinition
-from auto_coder.tools.registry import ToolRegistry
+from code_crafter.providers.base import ToolDefinition
+from code_crafter.tools.registry import ToolRegistry
 
 def my_tool(arg1: str) -> dict:
     return {"result": f"Processed {arg1}"}
@@ -237,7 +237,7 @@ Extend the `LLMProvider` base class in `providers/base.py` to support non-OpenAI
 
 ### Implementing SSO
 
-Edit `src/auto_coder/auth.py` to implement your SSO provider:
+Edit `src/code_crafter/auth.py` to implement your SSO provider:
 
 ```python
 async def get_sso_token() -> str | None:

@@ -10,8 +10,8 @@ import httpx
 from .base import LLMProvider, Message, StreamChunk, ToolCall, ToolDefinition
 from ..auth import get_certifi_path, update_certifi, get_authentication
 
-# Set AUTO_CODER_DEBUG=1 to enable debug logging
-DEBUG = os.environ.get("AUTO_CODER_DEBUG", "").lower() in ("1", "true", "yes")
+# Set CODE_CRAFTER_DEBUG=1 to enable debug logging
+DEBUG = os.environ.get("CODE_CRAFTER_DEBUG", "").lower() in ("1", "true", "yes")
 
 
 class OpenAICompatibleProvider(LLMProvider):

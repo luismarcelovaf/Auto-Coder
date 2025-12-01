@@ -1,4 +1,4 @@
-"""Command-line interface for auto-coder."""
+"""Command-line interface for code-crafter."""
 
 import argparse
 import asyncio
@@ -31,7 +31,7 @@ from .project import (
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser."""
     parser = argparse.ArgumentParser(
-        prog="auto-coder",
+        prog="code-crafter",
         description="AI-powered coding assistant CLI",
     )
 
@@ -109,7 +109,7 @@ async def check_and_create_project_file(
         Panel(
             "[yellow]No PROJECT.md found[/]\n\n"
             "PROJECT.md helps the AI understand your project structure and context.\n"
-            "Would you like auto-coder to investigate this project and create one?\n\n"
+            "Would you like code-crafter to investigate this project and create one?\n\n"
             "[dim]This will scan all source files and may take a few minutes for large projects.[/]",
             border_style="yellow",
         )
@@ -251,7 +251,7 @@ async def run_interactive(
     )
 
     # Set up history file
-    history_dir = Path.home() / ".config" / "auto-coder"
+    history_dir = Path.home() / ".config" / "code-crafter"
     history_dir.mkdir(parents=True, exist_ok=True)
     history_file = str(history_dir / "history")
 

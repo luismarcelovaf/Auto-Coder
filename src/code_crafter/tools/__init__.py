@@ -1,4 +1,4 @@
-"""Tool implementations for the auto-coder."""
+"""Tool implementations for code-crafter."""
 
 from .filesystem import (
     read_file,

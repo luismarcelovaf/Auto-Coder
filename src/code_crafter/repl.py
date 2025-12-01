@@ -1,4 +1,4 @@
-"""Interactive REPL interface for auto-coder."""
+"""Interactive REPL interface for code-crafter."""
 
 import asyncio
 import json
@@ -103,7 +103,7 @@ class ThinkingIndicator:
 
 
 class REPL:
-    """Interactive REPL for the auto-coder agent."""
+    """Interactive REPL for the code-crafter agent."""
 
     def __init__(
         self,
@@ -363,7 +363,7 @@ class REPL:
     def _show_help(self) -> None:
         """Display help information."""
         help_text = """
-# Auto-Coder Commands
+# Code-Crafter Commands
 
 - **/help** - Show this help message
 - **/clear** or **/reset** - Clear conversation history and reset correlation ID
@@ -452,7 +452,7 @@ The correlation ID resets when you use /clear or /reset.
 
         self.console.print(
             Panel(
-                "[bold]Welcome to Auto-Coder![/]\n\n"
+                "[bold]Welcome to Code-Crafter![/]\n\n"
                 "Type your requests and I'll help you with coding tasks.\n"
                 "Type [cyan]/help[/] for available commands.\n\n"
                 "[dim]Enter to submit, Ctrl+Enter for new line[/]\n"

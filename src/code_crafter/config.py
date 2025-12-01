@@ -1,4 +1,4 @@
-"""Configuration management for auto-coder."""
+"""Configuration management for code-crafter."""
 
 import os
 from dataclasses import dataclass, field
@@ -22,7 +22,7 @@ class LLMConfig:
 
 @dataclass
 class Config:
-    """Main configuration for auto-coder."""
+    """Main configuration for code-crafter."""
 
     llm: LLMConfig = field(default_factory=LLMConfig)
     working_dir: str = field(default_factory=os.getcwd)
@@ -46,10 +46,10 @@ class Config:
             # Look for config in standard locations
             config_file = None
             search_paths = [
-                Path.cwd() / ".auto-coder.yaml",
-                Path.cwd() / ".auto-coder.yml",
-                Path.home() / ".config" / "auto-coder" / "config.yaml",
-                Path.home() / ".auto-coder.yaml",
+                Path.cwd() / ".code-crafter.yaml",
+                Path.cwd() / ".code-crafter.yml",
+                Path.home() / ".config" / "code-crafter" / "config.yaml",
+                Path.home() / ".code-crafter.yaml",
             ]
             for path in search_paths:
                 if path.exists():
@@ -78,14 +78,14 @@ class Config:
                 config.system_prompt = data["system_prompt"]
 
         # Override with environment variables
-        if os.environ.get("AUTO_CODER_BASE_URL"):
-            config.llm.base_url = os.environ["AUTO_CODER_BASE_URL"]
+        if os.environ.get("CODE_CRAFTER_BASE_URL"):
+            config.llm.base_url = os.environ["CODE_CRAFTER_BASE_URL"]
 
-        if os.environ.get("AUTO_CODER_MODEL"):
-            config.llm.model = os.environ["AUTO_CODER_MODEL"]
+        if os.environ.get("CODE_CRAFTER_MODEL"):
+            config.llm.model = os.environ["CODE_CRAFTER_MODEL"]
 
-        if os.environ.get("AUTO_CODER_API_KEY"):
-            config.llm.api_key = os.environ["AUTO_CODER_API_KEY"]
+        if os.environ.get("CODE_CRAFTER_API_KEY"):
+            config.llm.api_key = os.environ["CODE_CRAFTER_API_KEY"]
 
         if os.environ.get("OPENAI_API_KEY") and not config.llm.api_key:
             config.llm.api_key = os.environ["OPENAI_API_KEY"]

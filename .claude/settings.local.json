@@ -3,7 +3,8 @@
     "allow": [
       "WebSearch",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:python-prompt-toolkit.readthedocs.io)"
+      "WebFetch(domain:python-prompt-toolkit.readthedocs.io)",
+      "Bash(del \"E:\\Temp\\Auto-Coder\\.auto-coder.yaml.example\")"
     ],
     "deny": [],
     "ask": []

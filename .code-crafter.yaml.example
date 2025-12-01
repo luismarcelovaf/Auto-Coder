@@ -1,5 +1,5 @@
-# Auto-Coder Configuration Example
-# Copy this file to ~/.auto-coder.yaml or ./.auto-coder.yaml
+# Code-Crafter Configuration Example
+# Copy this file to ~/.code-crafter.yaml or ./.code-crafter.yaml
 
 llm:
   # API endpoint URL (OpenAI-compatible)
@@ -42,12 +42,12 @@ llm:
 #
 # Option 1: API Key (simplest)
 # - Set api_key above, or
-# - Set AUTO_CODER_API_KEY environment variable, or
+# - Set CODE_CRAFTER_API_KEY environment variable, or
 # - Set OPENAI_API_KEY environment variable
 #
 # Option 2: SSO Authentication
 # - Set USE_SSO=true environment variable
-# - Implement get_sso_token() in src/auto_coder/auth.py
+# - Implement get_sso_token() in src/code_crafter/auth.py
 # - Or set SSO_TOKEN environment variable for simple token-based SSO
 #
 # Option 3: Custom Headers
@@ -69,5 +69,5 @@ llm:
 # =============================================================================
 #
 # SSL certificates are verified using certifi. To customize:
-# - Implement update_certifi() in src/auto_coder/auth.py
+# - Implement update_certifi() in src/code_crafter/auth.py
 # - The function is called to update/refresh certificates as needed

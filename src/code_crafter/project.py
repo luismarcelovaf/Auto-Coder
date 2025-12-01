@@ -1,4 +1,4 @@
-"""Project context management for auto-coder."""
+"""Project context management for code-crafter."""
 
 import os
 from pathlib import Path
