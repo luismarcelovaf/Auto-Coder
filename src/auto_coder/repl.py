@@ -206,6 +206,29 @@ class REPL:
 
                 result_text = Text.from_markup("\n\n".join(parts)) if parts else Text("(no output)")
 
+            # Special handling for read_file - show content with proper line breaks
+            elif name == "read_file" and isinstance(parsed, dict) and "content" in parsed:
+                file_content = parsed["content"]
+                # Show file path and metadata
+                header_parts = []
+                if parsed.get("path"):
+                    header_parts.append(f"[dim]{parsed['path']}[/]")
+                if parsed.get("showing_lines"):
+                    header_parts.append(f"[dim]Lines {parsed['showing_lines']} of {parsed.get('total_lines', '?')}[/]")
+                elif parsed.get("lines"):
+                    header_parts.append(f"[dim]{parsed['lines']} lines[/]")
+
+                # Truncate if too long
+                if len(file_content) > max_len:
+                    file_content = file_content[:max_len] + "\n..."
+
+                # Build display with header and content
+                if header_parts:
+                    display_text = " | ".join(header_parts) + "\n" + file_content
+                    result_text = Text.from_markup(display_text)
+                else:
+                    result_text = Text(file_content)
+
             # Special handling for list_directory - clean up tree characters for display
             elif name == "list_directory" and isinstance(parsed, dict) and "tree" in parsed:
                 tree_output = parsed["tree"]

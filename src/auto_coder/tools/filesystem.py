@@ -183,13 +183,18 @@ def edit_file(
 
     Four modes of operation:
     1. String replacement: Provide old_string and new_string to replace exact text
-    2. Line replacement: Provide start_line, end_line, and new_string to replace lines
-    3. Line deletion: Provide start_line, end_line, and delete_lines=True to remove lines entirely
+    2. Line replacement: Provide start_line, end_line, old_string (for verification), and new_string to replace lines
+    3. Line deletion: Provide start_line, end_line, old_string (for verification), and delete_lines=True to remove lines
     4. Insert mode: Provide insert_line and new_string to insert new lines after that line
+
+    IMPORTANT: For line-based operations (modes 2 and 3), old_string is REQUIRED to verify
+    that the content at those lines hasn't changed since the file was read. This prevents
+    accidental modifications when line numbers shift due to earlier edits.
 
     Args:
         file_path: Path to the file
-        old_string: Exact string to find and replace (for string mode)
+        old_string: For string mode: exact string to find and replace.
+                    For line modes: expected content at lines (for verification before edit)
         new_string: Replacement/insert string (use empty string "" to delete in string mode)
         start_line: Starting line number for line-based operations (1-based, inclusive)
         end_line: Ending line number for line-based operations (1-based, inclusive)
@@ -273,6 +278,14 @@ def edit_file(
                     "error": f"start_line {start_line} is beyond file length ({total_lines} lines)"
                 }
 
+            # REQUIRE old_string for verification to prevent edits when lines have shifted
+            if old_string is None:
+                return {
+                    "status": "FAILED",
+                    "error": "old_string is required for line-based operations to verify content hasn't changed. "
+                             "Provide the expected content at lines {}-{} to ensure safe editing.".format(start_line, end_line)
+                }
+
             # Adjust end_line if beyond file
             end_line = min(end_line, total_lines)
 
@@ -283,6 +296,21 @@ def edit_file(
             # Get the old content for reporting
             old_lines = lines[start_idx:end_idx]
             lines_removed = len(old_lines)
+
+            # Verify that the content at these lines matches old_string
+            actual_content = "\n".join(old_lines)
+            if actual_content != old_string:
+                # Provide helpful error message showing what's actually there
+                actual_preview = actual_content[:200] + "..." if len(actual_content) > 200 else actual_content
+                expected_preview = old_string[:200] + "..." if len(old_string) > 200 else old_string
+                return {
+                    "status": "FAILED",
+                    "error": f"Content at lines {start_line}-{end_line} doesn't match expected content. "
+                             f"The file may have changed since you read it. "
+                             f"Please re-read the file to get current line numbers.\n"
+                             f"Expected:\n{repr(expected_preview)}\n"
+                             f"Actual:\n{repr(actual_preview)}"
+                }
 
             if delete_lines:
                 # Delete mode - remove lines entirely
@@ -802,9 +830,10 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
             description=(
                 "Edit a file using one of four modes: "
                 "(1) STRING MODE: Provide old_string and new_string to replace exact text. "
-                "(2) LINE REPLACE: Provide start_line, end_line, and new_string to replace lines. "
-                "(3) LINE DELETE: Provide start_line, end_line, and delete_lines=true to remove lines entirely. "
-                "(4) INSERT MODE: Provide insert_line and new_string to insert new lines (0 = beginning)."
+                "(2) LINE REPLACE: Provide start_line, end_line, old_string (content verification), and new_string. "
+                "(3) LINE DELETE: Provide start_line, end_line, old_string (content verification), and delete_lines=true. "
+                "(4) INSERT MODE: Provide insert_line and new_string to insert new lines (0 = beginning). "
+                "IMPORTANT: For LINE modes, old_string MUST contain the exact content at those lines for verification."
             ),
             parameters={
                 "type": "object",
@@ -815,7 +844,7 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
                     },
                     "old_string": {
                         "type": "string",
-                        "description": "For STRING MODE: The exact string to find and replace",
+                        "description": "For STRING MODE: exact string to find/replace. For LINE modes: REQUIRED expected content at the lines (for verification that file hasn't changed)",
                     },
                     "new_string": {
                         "type": "string",
