@@ -36,6 +36,9 @@ class Agent:
         3. Send tool results back to LLM (new API request)
         4. Repeat until LLM gives final response (no tool calls)
 
+        If the LLM returns an empty response (no content and no tool calls),
+        the request is retried up to 3 times before accepting the empty response.
+
         Args:
             user_input: The user's message
 
@@ -48,23 +51,39 @@ class Agent:
         while iteration < self.max_tool_iterations:
             iteration += 1
 
-            # Get streaming response from LLM
+            # Retry logic for empty responses
+            max_retries = 3
             response_content = ""
             tool_calls: list[ToolCall] = []
 
-            stream = await self.provider.chat(
-                messages=self.conversation.get_messages(),
-                tools=self.tools.list_tools(),
-                stream=True,
-            )
+            for retry in range(max_retries + 1):
+                # Get streaming response from LLM
+                response_content = ""
+                tool_calls = []
 
-            # Collect response but DON'T yield yet - wait to see if there's a tool call
-            async for chunk in stream:
-                if chunk.content:
-                    response_content += chunk.content
+                stream = await self.provider.chat(
+                    messages=self.conversation.get_messages(),
+                    tools=self.tools.list_tools(),
+                    stream=True,
+                )
 
-                if chunk.tool_calls:
-                    tool_calls = chunk.tool_calls
+                # Collect response but DON'T yield yet - wait to see if there's a tool call
+                async for chunk in stream:
+                    if chunk.content:
+                        response_content += chunk.content
+
+                    if chunk.tool_calls:
+                        tool_calls = chunk.tool_calls
+
+                # Check if response is empty (no content and no tool calls)
+                if response_content or tool_calls:
+                    # Got a non-empty response, break out of retry loop
+                    break
+
+                # Empty response - retry if we haven't exhausted retries
+                if retry < max_retries:
+                    # Continue to next retry attempt
+                    continue
 
             # If no tool calls, we're done - yield the response and exit
             if not tool_calls:
