@@ -217,13 +217,33 @@ def edit_file(
                 "error": f"String appears {count} times in file. Provide more context to make it unique."
             }
 
-        # If deleting (empty new_string), also remove the trailing newline to avoid blank lines
+        # If deleting (empty new_string), remove the entire line including indentation and newline
         if new_string == "":
-            # Try to remove old_string + trailing newline, or leading newline + old_string
-            if old_string + "\n" in content:
-                new_content = content.replace(old_string + "\n", "", 1)
-            elif "\n" + old_string in content:
-                new_content = content.replace("\n" + old_string, "", 1)
+            # Find the position of old_string in content
+            pos = content.find(old_string)
+            if pos != -1:
+                # Find the start of the line (after previous newline or start of file)
+                line_start = content.rfind("\n", 0, pos) + 1  # +1 to skip the newline itself, or 0 if not found
+                # Check if everything between line_start and pos is whitespace
+                before_match = content[line_start:pos]
+                if before_match == "" or before_match.isspace():
+                    # Find the end of the line (next newline or end of file)
+                    line_end = content.find("\n", pos + len(old_string))
+                    if line_end == -1:
+                        line_end = len(content)
+                    else:
+                        line_end += 1  # Include the newline in deletion
+                    # Check if everything after old_string to end of line is whitespace
+                    after_match = content[pos + len(old_string):line_end].rstrip("\n")
+                    if after_match == "" or after_match.isspace():
+                        # Delete the entire line(s)
+                        new_content = content[:line_start] + content[line_end:]
+                    else:
+                        # There's content after old_string on the same line, just delete old_string
+                        new_content = content.replace(old_string, "", 1)
+                else:
+                    # There's content before old_string on the same line, just delete old_string
+                    new_content = content.replace(old_string, "", 1)
             else:
                 new_content = content.replace(old_string, "", 1)
         else:
