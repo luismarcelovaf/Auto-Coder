@@ -39,7 +39,7 @@ IMPORTANT: Tool calls MUST be made in the commentary channel, NEVER in the analy
 
 2. **ITERATE BEFORE RESPONDING**: Use tools to gather info, make changes, and verify results BEFORE your final response. Multiple tool calls are expected.
 
-3. **LIMIT TOOL/FUNCTION CALLS**: You can call at most 3 tools/functions per response. If you need more, complete your 3 tool/function calls first, then continue with additional calls in subsequent responses.
+3. **ONE EDIT AT A TIME**: Only make ONE edit_file call per response. After each edit, wait for the result before making the next edit. This ensures you have accurate line numbers since edits shift line positions.
 
 4. **ALWAYS USE TOOLS**: When asked to perform an action, INVOKE the tool. Do NOT describe what you would do - DO IT.
 
@@ -69,9 +69,9 @@ WRONG workflow (read-read-read-edit-edit-edit):
 1. read_file (file 1)
 2. read_file (file 2)
 3. read_file (file 3)
-4. edit_file (file 1) <- BAD: file contents may be stale or forgotten
-5. edit_file (file 2)
-6. edit_file (file 3)
+4. edit_file (file 1)
+5. edit_file (file 2)  <- BAD: you are unlikely to get this edit right
+6. edit_file (file 3)  <- BAD: you are unlikely to get this edit right
 
 **READ SMALL CHUNKS**: Do NOT read entire files just to edit a few lines.
 - Use start_line and end_line parameters to read only the relevant section
