@@ -171,35 +171,21 @@ def write_file(
 
 def edit_file(
     file_path: str,
-    old_string: str | None = None,
-    new_string: str | None = None,
-    start_line: int | None = None,
-    end_line: int | None = None,
-    insert_line: int | None = None,
-    delete_lines: bool = False,
+    old_string: str,
+    new_string: str,
     root_dir: str | None = None,
 ) -> dict[str, Any]:
-    """Edit a file by replacing text, replacing/deleting lines, or inserting new lines.
+    """Edit a file by replacing a unique string with new content.
 
-    Four modes of operation:
-    1. String replacement: Provide old_string and new_string to replace exact text
-    2. Line replacement: Provide start_line, end_line, old_string (for verification), and new_string to replace lines
-    3. Line deletion: Provide start_line, end_line, old_string (for verification), and delete_lines=True to remove lines
-    4. Insert mode: Provide insert_line and new_string to insert new lines after that line
+    The old_string must be unique in the file (appear exactly once). If it appears
+    multiple times, provide more surrounding context to make it unique.
 
-    IMPORTANT: For line-based operations (modes 2 and 3), old_string is REQUIRED to verify
-    that the content at those lines hasn't changed since the file was read. This prevents
-    accidental modifications when line numbers shift due to earlier edits.
+    To DELETE text, provide an empty string "" as new_string.
 
     Args:
         file_path: Path to the file
-        old_string: For string mode: exact string to find and replace.
-                    For line modes: expected content at lines (for verification before edit)
-        new_string: Replacement/insert string (use empty string "" to delete in string mode)
-        start_line: Starting line number for line-based operations (1-based, inclusive)
-        end_line: Ending line number for line-based operations (1-based, inclusive)
-        insert_line: Line number after which to insert new content (0 = insert at beginning)
-        delete_lines: If True with start_line/end_line, delete those lines entirely
+        old_string: Exact string to find and replace (must be unique in file)
+        new_string: Replacement string (use "" to delete the old_string)
         root_dir: Optional root directory to restrict access
 
     Returns:
@@ -216,169 +202,48 @@ def edit_file(
 
         content = path.read_text(encoding="utf-8")
 
-        # Determine mode: insert, line-based, or string-based
-        if insert_line is not None:
-            # Insert mode - add new lines after specified line
-            if new_string is None:
-                return {
-                    "status": "FAILED",
-                    "error": "new_string is required for insert mode"
-                }
+        # Check that old_string exists and is unique
+        count = content.count(old_string)
+        if count == 0:
+            # Provide helpful debugging info
+            old_repr = repr(old_string[:200]) if len(old_string) > 200 else repr(old_string)
+            return {
+                "status": "FAILED",
+                "error": f"String not found in file. Make sure whitespace (tabs, spaces, newlines) matches exactly. Searched for: {old_repr}"
+            }
+        if count > 1:
+            return {
+                "status": "FAILED",
+                "error": f"String appears {count} times in file. Provide more context to make it unique."
+            }
 
-            lines = content.split("\n")
-            total_lines = len(lines)
-
-            if insert_line < 0:
-                return {
-                    "status": "FAILED",
-                    "error": f"insert_line must be >= 0, got {insert_line}"
-                }
-
-            # insert_line=0 means insert at beginning, otherwise insert after that line
-            insert_idx = min(insert_line, total_lines)
-
-            new_lines = new_string.split("\n")
-            lines[insert_idx:insert_idx] = new_lines
-
-            new_content = "\n".join(lines)
-            path.write_text(new_content, encoding="utf-8")
-
-            if insert_line == 0:
-                position = "at the beginning"
+        # If deleting (empty new_string), also remove the trailing newline to avoid blank lines
+        if new_string == "":
+            # Try to remove old_string + trailing newline, or leading newline + old_string
+            if old_string + "\n" in content:
+                new_content = content.replace(old_string + "\n", "", 1)
+            elif "\n" + old_string in content:
+                new_content = content.replace("\n" + old_string, "", 1)
             else:
-                position = f"after line {insert_line}"
+                new_content = content.replace(old_string, "", 1)
+        else:
+            new_content = content.replace(old_string, new_string, 1)
 
+        path.write_text(new_content, encoding="utf-8")
+
+        # Count lines changed
+        old_line_count = old_string.count("\n") + 1
+        new_line_count = new_string.count("\n") + 1 if new_string else 0
+
+        if new_string == "":
             return {
                 "status": "SUCCESS",
                 "success": True,
-                "message": f"Inserted {len(new_lines)} lines {position}",
+                "message": f"Successfully deleted {len(old_string)} chars ({old_line_count} lines)",
                 "path": str(path),
-                "lines_inserted": len(new_lines),
+                "old_length": len(old_string),
             }
-
-        elif start_line is not None and end_line is not None:
-            # Line-based replacement or deletion mode
-            lines = content.split("\n")
-            total_lines = len(lines)
-
-            # Validate line numbers
-            if start_line < 1:
-                return {
-                    "status": "FAILED",
-                    "error": f"start_line must be >= 1, got {start_line}"
-                }
-            if end_line < start_line:
-                return {
-                    "status": "FAILED",
-                    "error": f"end_line ({end_line}) must be >= start_line ({start_line})"
-                }
-            if start_line > total_lines:
-                return {
-                    "status": "FAILED",
-                    "error": f"start_line {start_line} is beyond file length ({total_lines} lines)"
-                }
-
-            # REQUIRE old_string for verification to prevent edits when lines have shifted
-            if old_string is None:
-                return {
-                    "status": "FAILED",
-                    "error": "old_string is required for line-based operations to verify content hasn't changed. "
-                             "Provide the expected content at lines {}-{} to ensure safe editing.".format(start_line, end_line)
-                }
-
-            # Adjust end_line if beyond file
-            end_line = min(end_line, total_lines)
-
-            # Convert to 0-based indexing
-            start_idx = start_line - 1
-            end_idx = end_line
-
-            # Get the old content for reporting
-            old_lines = lines[start_idx:end_idx]
-            lines_removed = len(old_lines)
-
-            # Verify that the content at these lines matches old_string
-            actual_content = "\n".join(old_lines)
-            if actual_content != old_string:
-                # Provide helpful error message showing what's actually there
-                actual_preview = actual_content[:200] + "..." if len(actual_content) > 200 else actual_content
-                expected_preview = old_string[:200] + "..." if len(old_string) > 200 else old_string
-                return {
-                    "status": "FAILED",
-                    "error": f"Content at lines {start_line}-{end_line} doesn't match expected content. "
-                             f"The file may have changed since you read it. "
-                             f"Please re-read the file to get current line numbers.\n"
-                             f"Expected:\n{repr(expected_preview)}\n"
-                             f"Actual:\n{repr(actual_preview)}"
-                }
-
-            if delete_lines:
-                # Delete mode - remove lines entirely
-                del lines[start_idx:end_idx]
-                new_content = "\n".join(lines)
-                path.write_text(new_content, encoding="utf-8")
-
-                return {
-                    "status": "SUCCESS",
-                    "success": True,
-                    "message": f"Deleted lines {start_line}-{end_line} ({lines_removed} lines removed)",
-                    "path": str(path),
-                    "lines_deleted": lines_removed,
-                }
-            else:
-                # Replacement mode - need new_string
-                if new_string is None:
-                    return {
-                        "status": "FAILED",
-                        "error": "new_string is required when using line-based replacement (use delete_lines=True to delete)"
-                    }
-
-                # Replace the lines
-                new_lines = new_string.split("\n")
-                lines[start_idx:end_idx] = new_lines
-
-                new_content = "\n".join(lines)
-                path.write_text(new_content, encoding="utf-8")
-
-                return {
-                    "status": "SUCCESS",
-                    "success": True,
-                    "message": f"Replaced lines {start_line}-{end_line} ({lines_removed} lines) with {len(new_lines)} new lines",
-                    "path": str(path),
-                    "lines_replaced": lines_removed,
-                    "new_lines_count": len(new_lines),
-                }
-
-        elif old_string is not None:
-            # String-based replacement mode
-            if new_string is None:
-                return {
-                    "status": "FAILED",
-                    "error": "new_string is required when using string-based replacement"
-                }
-
-            # Check that old_string exists and is unique
-            count = content.count(old_string)
-            if count == 0:
-                # Provide helpful debugging info
-                old_repr = repr(old_string[:200]) if len(old_string) > 200 else repr(old_string)
-                return {
-                    "status": "FAILED",
-                    "error": f"String not found in file. Make sure whitespace (tabs, spaces, newlines) matches exactly. Searched for: {old_repr}"
-                }
-            if count > 1:
-                return {
-                    "status": "FAILED",
-                    "error": f"String appears {count} times in file. Provide more context to make it unique."
-                }
-
-            new_content = content.replace(old_string, new_string, 1)
-            path.write_text(new_content, encoding="utf-8")
-
-            # Count lines changed
-            old_line_count = old_string.count("\n") + 1
-            new_line_count = new_string.count("\n") + 1
-
+        else:
             return {
                 "status": "SUCCESS",
                 "success": True,
@@ -386,12 +251,6 @@ def edit_file(
                 "path": str(path),
                 "old_length": len(old_string),
                 "new_length": len(new_string),
-            }
-
-        else:
-            return {
-                "status": "FAILED",
-                "error": "Must provide either old_string (for string replacement) or start_line+end_line (for line replacement)"
             }
 
     except OutsideWorkingDirectoryError as e:
@@ -733,15 +592,11 @@ def _make_edit_file_handler(root_dir: str | None):
     """Create a handler for edit_file that ignores extra kwargs."""
     def handler(
         file_path: str,
-        old_string: str | None = None,
-        new_string: str | None = None,
-        start_line: int | None = None,
-        end_line: int | None = None,
-        insert_line: int | None = None,
-        delete_lines: bool = False,
+        old_string: str,
+        new_string: str,
         **kwargs
     ) -> dict[str, Any]:
-        return edit_file(file_path, old_string, new_string, start_line, end_line, insert_line, delete_lines, root_dir)
+        return edit_file(file_path, old_string, new_string, root_dir)
     return handler
 
 
@@ -828,12 +683,10 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
         ToolDefinition(
             name="edit_file",
             description=(
-                "Edit a file using one of four modes: "
-                "(1) STRING MODE: Provide old_string and new_string to replace exact text. "
-                "(2) LINE REPLACE: Provide start_line, end_line, old_string (content verification), and new_string. "
-                "(3) LINE DELETE: Provide start_line, end_line, old_string (content verification), and delete_lines=true. "
-                "(4) INSERT MODE: Provide insert_line and new_string to insert new lines (0 = beginning). "
-                "IMPORTANT: For LINE modes, old_string MUST contain the exact content at those lines for verification."
+                "Edit a file by replacing a unique string with new content. "
+                "The old_string MUST be unique in the file (appear exactly once). "
+                "If it appears multiple times, include more surrounding context to make it unique. "
+                "To DELETE text, use an empty string '' as new_string."
             ),
             parameters={
                 "type": "object",
@@ -844,31 +697,14 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
                     },
                     "old_string": {
                         "type": "string",
-                        "description": "For STRING MODE: exact string to find/replace. For LINE modes: REQUIRED expected content at the lines (for verification that file hasn't changed)",
+                        "description": "The exact string to find and replace (must appear exactly once in the file)",
                     },
                     "new_string": {
                         "type": "string",
-                        "description": "The replacement/insert content (not needed for LINE DELETE mode)",
-                    },
-                    "start_line": {
-                        "type": "integer",
-                        "description": "For LINE modes: Starting line number (1-based, inclusive)",
-                    },
-                    "end_line": {
-                        "type": "integer",
-                        "description": "For LINE modes: Ending line number (1-based, inclusive)",
-                    },
-                    "delete_lines": {
-                        "type": "boolean",
-                        "description": "For LINE DELETE: Set to true to delete lines entirely (removes the lines, not just their content)",
-                        "default": False,
-                    },
-                    "insert_line": {
-                        "type": "integer",
-                        "description": "For INSERT MODE: Line number after which to insert (0 = insert at beginning)",
+                        "description": "The replacement string (use empty string '' to delete old_string)",
                     },
                 },
-                "required": ["file_path"],
+                "required": ["file_path", "old_string", "new_string"],
             },
             handler=_make_edit_file_handler(root_dir),
         ),

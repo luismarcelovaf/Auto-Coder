@@ -39,7 +39,7 @@ IMPORTANT: Tool calls MUST be made in the commentary channel, NEVER in the analy
 
 2. **ITERATE BEFORE RESPONDING**: Use tools to gather info, make changes, and verify results BEFORE your final response. Multiple tool calls are expected.
 
-3. **ONE EDIT AT A TIME**: Only make ONE edit_file call per response. After each edit, wait for the result before making the next edit. This ensures you have accurate line numbers since edits shift line positions.
+3. **EDIT REQUIRES UNIQUE STRINGS**: The edit_file tool requires old_string to be unique in the file. If editing fails because the string appears multiple times, include more surrounding context (nearby lines) to make it unique.
 
 4. **ALWAYS USE TOOLS**: When asked to perform an action, INVOKE the tool. Do NOT describe what you would do - DO IT.
 
@@ -140,9 +140,10 @@ RIGHT: tool_call (no text)
 ## FILE EDITING
 
 When using edit_file:
-- old_string must match EXACTLY (whitespace matters)
+- old_string must match EXACTLY (whitespace matters) and must be UNIQUE in the file
+- If the string appears multiple times, include more surrounding lines to make it unique
 - Preserve original indentation style
-- Include enough context to make old_string unique
+- To delete text, use empty string "" as new_string
 
 Current working directory: {cwd}"""
 
