@@ -1,11 +1,34 @@
 """Core agent that orchestrates LLM interactions and tool execution."""
 
 import asyncio
+import json
 from typing import AsyncIterator, Callable
 
 from .providers.base import LLMProvider, Message, StreamChunk, ToolCall
 from .state.conversation import ConversationManager
 from .tools.registry import ToolRegistry
+
+
+def _deduplicate_tool_calls(tool_calls: list[ToolCall]) -> list[ToolCall]:
+    """Remove duplicate tool calls with identical name and arguments.
+
+    Args:
+        tool_calls: List of tool calls to deduplicate
+
+    Returns:
+        List with duplicates removed, preserving order of first occurrence
+    """
+    seen: set[str] = set()
+    unique: list[ToolCall] = []
+
+    for tc in tool_calls:
+        # Create a hashable key from name + sorted arguments JSON
+        key = f"{tc.name}:{json.dumps(tc.arguments, sort_keys=True)}"
+        if key not in seen:
+            seen.add(key)
+            unique.append(tc)
+
+    return unique
 
 
 class Agent:
@@ -93,13 +116,18 @@ class Agent:
                 break
 
             # Tool calls detected - DISCARD any text response (it's premature reasoning)
-            # Add assistant message with ALL tool calls
+            # Deduplicate tool calls (same name + same arguments)
+            original_count = len(tool_calls)
+            tool_calls = _deduplicate_tool_calls(tool_calls)
+            dedupe_count = original_count - len(tool_calls)
+
+            # Add assistant message with deduplicated tool calls
             self.conversation.add_assistant_message(
                 content=None,  # Discard text when there's a tool call
                 tool_calls=tool_calls,
             )
 
-            # Execute ALL tool calls and collect results
+            # Execute tool calls and collect results
             for tool_call in tool_calls:
                 if self.on_tool_start:
                     self.on_tool_start(tool_call)
