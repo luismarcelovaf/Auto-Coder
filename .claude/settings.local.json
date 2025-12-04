@@ -4,7 +4,12 @@
       "WebSearch",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:python-prompt-toolkit.readthedocs.io)",
-      "Bash(del \"E:\\Temp\\Auto-Coder\\.auto-coder.yaml.example\")"
+      "Bash(del \"E:\\Temp\\Auto-Coder\\.auto-coder.yaml.example\")",
+      "WebFetch(domain:cookbook.openai.com)",
+      "Bash(python -m py_compile:*)",
+      "WebFetch(domain:opencode.ai)",
+      "WebFetch(domain:deepwiki.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": [],
     "ask": []

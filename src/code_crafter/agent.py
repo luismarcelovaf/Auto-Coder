@@ -70,9 +70,17 @@ class Agent:
         """
         self.conversation.add_user_message(user_input)
 
+        # Estimate tool definition tokens (rough estimate: ~200 tokens per tool)
+        tool_tokens = len(self.tools.list_tools()) * 200
+
         iteration = 0
         while iteration < self.max_tool_iterations:
             iteration += 1
+
+            # Check context usage before making API call
+            estimate = self.conversation.check_context(tool_tokens)
+            if estimate.is_over_limit:
+                yield "\n\n[Warning: Context window exceeded. Consider using /clear to reset the conversation.]"
 
             # Retry logic for empty responses
             max_retries = 3

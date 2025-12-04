@@ -129,9 +129,9 @@ async def check_and_create_project_file(
         timeout=config.llm.timeout,
     )
 
-    # Create a simple conversation manager for investigation (Harmony format)
+    # Create a simple conversation manager for investigation
     conversation = ConversationManager(
-        system_prompt="<|start|>system<|message|>You are a code analyzer. Provide clear, structured summaries of code.\n\nReasoning: low\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.<|end|>",
+        system_prompt="You are a code analyzer. Provide clear, structured summaries of code. Be thorough but concise.",
         working_dir=working_dir,
     )
 

@@ -3,9 +3,99 @@
 import asyncio
 import inspect
 import json
+import re
 from typing import Any
 
 from ..providers.base import ToolDefinition, ToolCall, ToolResult
+
+
+# Mapping of common parameter name variations to canonical names
+PARAMETER_ALIASES: dict[str, str] = {
+    # Camel case to snake_case
+    "filePath": "file_path",
+    "fileName": "file_name",
+    "dirPath": "dir_path",
+    "oldString": "old_string",
+    "newString": "new_string",
+    "startLine": "start_line",
+    "endLine": "end_line",
+    "maxDepth": "max_depth",
+    "includeContents": "include_contents",
+    "workingDir": "working_dir",
+    "replaceAll": "replace_all",
+
+    # Other common variations
+    "path": "file_path",
+    "filepath": "file_path",
+    "filename": "file_name",
+    "directory": "dir_path",
+    "old": "old_string",
+    "new": "new_string",
+    "search": "pattern",
+    "query": "pattern",
+    "cmd": "command",
+}
+
+
+def _normalize_tool_name(name: str) -> str:
+    """Normalize tool name to lowercase with underscores.
+
+    Handles:
+    - Capitalized names (Write_file -> write_file)
+    - PascalCase (WriteFile -> write_file)
+    - Mixed case (WRITE_FILE -> write_file)
+
+    Args:
+        name: The tool name to normalize
+
+    Returns:
+        Normalized tool name in lowercase with underscores
+    """
+    # Handle PascalCase by inserting underscores before uppercase letters
+    # e.g., WriteFile -> Write_File -> write_file
+    normalized = re.sub(r'(?<!^)(?<!_)([A-Z])', r'_\1', name)
+
+    # Lowercase everything
+    normalized = normalized.lower()
+
+    # Remove any double underscores that might have been created
+    normalized = re.sub(r'_+', '_', normalized)
+
+    # Remove leading/trailing underscores
+    normalized = normalized.strip('_')
+
+    return normalized
+
+
+def _normalize_arguments(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Normalize argument names to canonical snake_case.
+
+    Handles common variations like camelCase, different naming conventions, etc.
+
+    Args:
+        arguments: The original arguments dict
+
+    Returns:
+        New dict with normalized parameter names
+    """
+    normalized: dict[str, Any] = {}
+
+    for key, value in arguments.items():
+        # First, check if this exact key has an alias
+        canonical_key = PARAMETER_ALIASES.get(key)
+
+        if canonical_key is None:
+            # Try lowercase version
+            canonical_key = PARAMETER_ALIASES.get(key.lower())
+
+        if canonical_key is None:
+            # No alias found, use the original key (lowercased and snake_cased)
+            # Convert camelCase to snake_case
+            canonical_key = re.sub(r'(?<!^)(?<!_)([A-Z])', r'_\1', key).lower()
+
+        normalized[canonical_key] = value
+
+    return normalized
 
 
 class ToolRegistry:
@@ -98,6 +188,8 @@ class ToolRegistry:
         """Execute a tool call asynchronously.
 
         Supports both sync and async tool handlers.
+        Normalizes tool names and argument names for compatibility with
+        models that may use different naming conventions (camelCase, PascalCase, etc.).
 
         Args:
             tool_call: The tool call to execute
@@ -105,18 +197,31 @@ class ToolRegistry:
         Returns:
             ToolResult with the execution output
         """
-        tool = self._tools.get(tool_call.name)
+        # Normalize tool name to handle variations like WriteFile, Write_File, etc.
+        normalized_name = _normalize_tool_name(tool_call.name)
+        tool = self._tools.get(normalized_name)
+
+        # If not found with normalized name, try the original name as fallback
+        if tool is None:
+            tool = self._tools.get(tool_call.name)
 
         if tool is None:
+            # Provide helpful error with available tools
+            available = ", ".join(sorted(self._tools.keys()))
             return ToolResult(
                 tool_call_id=tool_call.id,
                 name=tool_call.name,
-                content=json.dumps({"error": f"Unknown tool: {tool_call.name}"}),
+                content=json.dumps({
+                    "error": f"Unknown tool: '{tool_call.name}' (normalized: '{normalized_name}'). Available tools: {available}"
+                }),
                 is_error=True,
             )
 
         try:
-            result = tool.handler(**tool_call.arguments)
+            # Normalize argument names to handle camelCase variations
+            normalized_args = _normalize_arguments(tool_call.arguments)
+
+            result = tool.handler(**normalized_args)
 
             # If the handler is async, await it
             if asyncio.iscoroutine(result):
@@ -124,6 +229,18 @@ class ToolRegistry:
 
             return self._process_result(tool_call, result)
 
+        except TypeError as e:
+            # Handle missing/extra arguments more gracefully
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                name=tool_call.name,
+                content=json.dumps({
+                    "error": f"Invalid arguments for '{tool_call.name}': {e}",
+                    "provided_arguments": list(tool_call.arguments.keys()),
+                    "hint": "Check parameter names - use snake_case (e.g., file_path, old_string)"
+                }),
+                is_error=True,
+            )
         except Exception as e:
             return ToolResult(
                 tool_call_id=tool_call.id,

@@ -9,6 +9,7 @@ from .safety import (
     check_path_safety,
     confirm_dangerous_operation,
 )
+from .edit_strategies import apply_edit
 
 
 class OutsideWorkingDirectoryError(Exception):
@@ -182,6 +183,9 @@ def edit_file(
 
     To DELETE text, provide an empty string "" as new_string.
 
+    Uses multiple fallback matching strategies to handle minor whitespace differences
+    between the model's output and the actual file content.
+
     Args:
         file_path: Path to the file
         old_string: Exact string to find and replace (must be unique in file)
@@ -202,28 +206,32 @@ def edit_file(
 
         content = path.read_text(encoding="utf-8")
 
-        # Check that old_string exists and is unique
-        count = content.count(old_string)
-        if count == 0:
+        # Use fallback strategies for matching
+        success, new_content, strategy_used = apply_edit(content, old_string, new_string)
+
+        if not success:
             # Provide helpful debugging info
             old_repr = repr(old_string[:200]) if len(old_string) > 200 else repr(old_string)
-            return {
-                "status": "FAILED",
-                "error": f"String not found in file. Make sure whitespace (tabs, spaces, newlines) matches exactly. Searched for: {old_repr}"
-            }
-        if count > 1:
-            return {
-                "status": "FAILED",
-                "error": f"String appears {count} times in file. Provide more context to make it unique."
-            }
 
-        # If deleting (empty new_string), remove the entire line including indentation and newline
-        if new_string == "":
+            if strategy_used.startswith("exact_multiple_"):
+                count = int(strategy_used.split("_")[-1])
+                return {
+                    "status": "FAILED",
+                    "error": f"String appears {count} times in file. Include more surrounding context to make it unique."
+                }
+            else:
+                return {
+                    "status": "FAILED",
+                    "error": f"String not found in file (tried multiple matching strategies). Ensure whitespace matches exactly. Searched for: {old_repr}"
+                }
+
+        # Handle deletion: if new_string is empty, try to clean up entire lines
+        if new_string == "" and strategy_used == "exact":
             # Find the position of old_string in content
             pos = content.find(old_string)
             if pos != -1:
                 # Find the start of the line (after previous newline or start of file)
-                line_start = content.rfind("\n", 0, pos) + 1  # +1 to skip the newline itself, or 0 if not found
+                line_start = content.rfind("\n", 0, pos) + 1
                 # Check if everything between line_start and pos is whitespace
                 before_match = content[line_start:pos]
                 if before_match == "" or before_match.isspace():
@@ -238,16 +246,6 @@ def edit_file(
                     if after_match == "" or after_match.isspace():
                         # Delete the entire line(s)
                         new_content = content[:line_start] + content[line_end:]
-                    else:
-                        # There's content after old_string on the same line, just delete old_string
-                        new_content = content.replace(old_string, "", 1)
-                else:
-                    # There's content before old_string on the same line, just delete old_string
-                    new_content = content.replace(old_string, "", 1)
-            else:
-                new_content = content.replace(old_string, "", 1)
-        else:
-            new_content = content.replace(old_string, new_string, 1)
 
         path.write_text(new_content, encoding="utf-8")
 
@@ -255,23 +253,26 @@ def edit_file(
         old_line_count = old_string.count("\n") + 1
         new_line_count = new_string.count("\n") + 1 if new_string else 0
 
+        result = {
+            "status": "SUCCESS",
+            "success": True,
+            "path": str(path),
+        }
+
         if new_string == "":
-            return {
-                "status": "SUCCESS",
-                "success": True,
-                "message": f"Successfully deleted {len(old_string)} chars ({old_line_count} lines)",
-                "path": str(path),
-                "old_length": len(old_string),
-            }
+            result["message"] = f"Successfully deleted {len(old_string)} chars ({old_line_count} lines)"
+            result["old_length"] = len(old_string)
         else:
-            return {
-                "status": "SUCCESS",
-                "success": True,
-                "message": f"Successfully replaced {len(old_string)} chars ({old_line_count} lines) with {len(new_string)} chars ({new_line_count} lines)",
-                "path": str(path),
-                "old_length": len(old_string),
-                "new_length": len(new_string),
-            }
+            result["message"] = f"Successfully replaced {len(old_string)} chars ({old_line_count} lines) with {len(new_string)} chars ({new_line_count} lines)"
+            result["old_length"] = len(old_string)
+            result["new_length"] = len(new_string)
+
+        # Note which strategy was used (helpful for debugging)
+        if strategy_used != "exact":
+            result["matching_strategy"] = strategy_used
+            result["note"] = f"Used fallback matching strategy: {strategy_used}"
+
+        return result
 
     except OutsideWorkingDirectoryError as e:
         return {"status": "DENIED", "error": str(e)}
@@ -653,11 +654,33 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="read_file",
-            description=(
-                "Read the contents of a file. Returns the file content with line numbers. "
-                "The content preserves exact whitespace (tabs, spaces) for accurate editing. "
-                "Optionally specify a line range to read only part of the file."
-            ),
+            description="""\
+Read the contents of a file and return it with line numbers.
+
+WHEN TO USE:
+- Before editing a file (ALWAYS read first, then edit)
+- When you need to understand file contents
+- To check if a file exists and what it contains
+
+PARAMETERS:
+- file_path: Path to the file (relative to working directory or absolute)
+- start_line: Optional starting line (1-based). Use for large files.
+- end_line: Optional ending line (1-based). Use for large files.
+
+OUTPUT:
+- Returns file content with line numbers (e.g., "  42 | def foo():")
+- Preserves exact whitespace (tabs, spaces) for accurate editing
+- Shows total line count
+
+FAILURE MODES:
+- File not found: Check the path, use search_files to locate it
+- Binary file: Cannot read binary files (images, compiled code, etc.)
+- Permission denied: File may be protected
+
+EXAMPLE:
+read_file(file_path="src/main.py")
+read_file(file_path="src/main.py", start_line=100, end_line=150)
+""",
             parameters={
                 "type": "object",
                 "properties": {
@@ -680,10 +703,32 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="write_file",
-            description=(
-                "Write content to a file. Creates the file if it doesn't exist, or overwrites if it does. "
-                "Use exact whitespace (tabs/spaces) as needed for proper indentation."
-            ),
+            description="""\
+Create a new file or completely overwrite an existing file with new content.
+
+WHEN TO USE:
+- Creating a brand new file that doesn't exist
+- Completely replacing all content in a file
+- NOT for partial edits (use edit_file instead)
+
+PARAMETERS:
+- file_path: Path where the file should be created/overwritten
+- content: The complete content to write
+
+BEHAVIOR:
+- Creates parent directories if they don't exist
+- Overwrites existing file completely (all previous content is lost)
+- Uses UTF-8 encoding
+
+FAILURE MODES:
+- Permission denied: Check directory permissions
+- Invalid path: Ensure path is valid for your OS
+
+WARNING: This OVERWRITES the entire file. For partial changes, use edit_file.
+
+EXAMPLE:
+write_file(file_path="src/new_module.py", content="def hello():\\n    print('Hello')")
+""",
             parameters={
                 "type": "object",
                 "properties": {
@@ -702,12 +747,51 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="edit_file",
-            description=(
-                "Edit a file by replacing a unique string with new content. "
-                "The old_string MUST be unique in the file (appear exactly once). "
-                "If it appears multiple times, include more surrounding context to make it unique. "
-                "To DELETE text, use an empty string '' as new_string."
-            ),
+            description="""\
+Edit a file by finding and replacing a unique string. This is the preferred way to modify existing files.
+
+IMPORTANT: ALWAYS read_file BEFORE edit_file to ensure you have the current content.
+
+PARAMETERS:
+- file_path: Path to the file to edit
+- old_string: The EXACT string to find (must appear exactly once in the file)
+- new_string: The replacement string (use "" to delete the old_string)
+
+REQUIREMENTS:
+1. old_string must match EXACTLY including whitespace, indentation, and newlines
+2. old_string must be UNIQUE in the file (appear only once)
+3. Include surrounding context lines if the target string appears multiple times
+
+FAILURE MODES:
+- "String not found": Your old_string doesn't match exactly. Check:
+  - Whitespace (tabs vs spaces)
+  - Line endings
+  - Hidden characters
+  - Read the file again to get the exact content
+- "String appears N times": Include more surrounding lines to make it unique
+
+EXAMPLES:
+# Change a function name
+edit_file(
+    file_path="src/utils.py",
+    old_string="def old_name(",
+    new_string="def new_name("
+)
+
+# Delete a line (include the newline)
+edit_file(
+    file_path="src/utils.py",
+    old_string="    # TODO: remove this\\n",
+    new_string=""
+)
+
+# Add a new import (include context to make unique)
+edit_file(
+    file_path="src/main.py",
+    old_string="import os\\nimport sys",
+    new_string="import os\\nimport sys\\nimport json"
+)
+""",
             parameters={
                 "type": "object",
                 "properties": {
@@ -730,11 +814,27 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="list_directory",
-            description=(
-                "Show the directory structure as a tree with file sizes and dates (like ls -la). "
-                "Recursively displays files and folders. Useful for understanding project layout. "
-                "Automatically skips common non-essential directories like node_modules, __pycache__, .git, venv, etc."
-            ),
+            description="""\
+Show the directory structure as a tree with file sizes and modification dates.
+
+WHEN TO USE:
+- Understanding the project layout
+- Finding files when you don't know the exact path
+- Exploring a new codebase
+
+PARAMETERS:
+- dir_path: Directory to list (default: current directory)
+- max_depth: How deep to traverse (default: 10)
+
+OUTPUT:
+- Tree structure with file sizes and dates
+- Total file and directory count
+- Automatically skips: node_modules, __pycache__, .git, venv, dist, build, etc.
+
+EXAMPLE:
+list_directory()
+list_directory(dir_path="src", max_depth=3)
+""",
             parameters={
                 "type": "object",
                 "properties": {
@@ -755,10 +855,25 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="delete_file",
-            description=(
-                "Delete a file. Use with caution - this action cannot be undone. "
-                "Only works on files, not directories."
-            ),
+            description="""\
+Delete a file permanently.
+
+WHEN TO USE:
+- Removing files that are no longer needed
+- Cleaning up temporary files
+
+PARAMETERS:
+- file_path: Path to the file to delete
+
+WARNING: This action cannot be undone. The file is permanently deleted.
+
+LIMITATIONS:
+- Only works on files, not directories
+- Cannot delete files outside the working directory without confirmation
+
+EXAMPLE:
+delete_file(file_path="src/old_module.py")
+""",
             parameters={
                 "type": "object",
                 "properties": {
@@ -773,12 +888,37 @@ def get_file_tools(root_dir: str | None = None) -> list[ToolDefinition]:
         ),
         ToolDefinition(
             name="search_files",
-            description=(
-                "Search for files by name OR content matching a regex pattern. "
-                "Searches both file names and file contents by default. "
-                r"Examples: 'def my_function' to find where a function is defined, "
-                r"'\.py$' for Python files, 'TODO' to find TODO comments."
-            ),
+            description="""\
+Search for files by name or content using regex patterns.
+
+WHEN TO USE:
+- Finding where a function/class/variable is defined
+- Locating files by name pattern
+- Finding all occurrences of a string across the codebase
+
+PARAMETERS:
+- pattern: Regex pattern (case-insensitive)
+- dir_path: Directory to search in (default: current directory)
+- include_contents: Search file contents too, not just names (default: true)
+
+OUTPUT:
+- List of matching files with paths
+- For content matches: line numbers and text of matching lines
+- Limited to 50 results
+
+COMMON PATTERNS:
+- "def my_function" - Find function definition
+- "class MyClass" - Find class definition
+- "\\.py$" - Find Python files by name
+- "TODO|FIXME" - Find all TODOs and FIXMEs
+- "import json" - Find files importing json
+
+SKIPPED DIRECTORIES: node_modules, __pycache__, .git, venv, dist, build, etc.
+
+EXAMPLE:
+search_files(pattern="def calculate_total")
+search_files(pattern="\\.test\\.py$", include_contents=False)
+""",
             parameters={
                 "type": "object",
                 "properties": {

@@ -284,11 +284,42 @@ def get_shell_tools(working_dir: str | None = None) -> list[ToolDefinition]:
     return [
         ToolDefinition(
             name="run_command",
-            description=(
-                "Execute a shell command and return its output. "
-                "Use this for running build commands, tests, git operations, etc. "
-                "The command runs in a shell (bash on Unix, cmd on Windows)."
-            ),
+            description="""\
+Execute a shell command and return its output.
+
+WHEN TO USE:
+- Running build commands (npm build, cargo build, make)
+- Running tests (pytest, npm test, cargo test)
+- Git operations (git status, git add, git commit)
+- Installing dependencies (npm install, pip install)
+- Any shell/terminal operation
+
+PARAMETERS:
+- command: The shell command to execute
+- working_dir: Optional working directory (default: project root)
+
+OUTPUT:
+- stdout: Standard output from the command
+- stderr: Standard error from the command
+- return_code: Exit code (0 = success)
+
+BEHAVIOR:
+- Uses bash on Unix, cmd on Windows
+- Times out after 120 seconds
+- Truncates very long output (>50000 chars)
+
+DANGEROUS COMMANDS (require user confirmation):
+- rm, del (deletion)
+- sudo, su (elevated privileges)
+- git push --force (destructive git ops)
+- Commands accessing paths outside working directory
+
+EXAMPLES:
+run_command(command="git status")
+run_command(command="npm install")
+run_command(command="python -m pytest tests/")
+run_command(command="ls -la", working_dir="src")
+""",
             parameters={
                 "type": "object",
                 "properties": {
